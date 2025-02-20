@@ -8,10 +8,19 @@
 namespace yolo
 {
 
+struct Point
+{
+    float x, y, vis;
+    Point() = default;
+    Point(float x, float y, float vis) :
+        x(x), y(y), vis(vis) {}
+};
+
 struct Box 
 {
     float left, top, right, bottom, confidence;
     int class_label;
+    std::vector<Point> pose;
 
     Box() = default;
     Box(float left, float top, float right, float bottom, float confidence, int class_label)
@@ -38,7 +47,8 @@ struct Box
 enum class YoloType : int{
     YOLOV5  = 0,
     YOLOV8  = 1,
-    YOLOV11 = 2
+    YOLOV11 = 2,
+    YOLOV11POSE = 3
 };
 
 using BoxArray = std::vector<Box>;

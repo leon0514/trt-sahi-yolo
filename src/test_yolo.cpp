@@ -232,3 +232,110 @@ void v5NoSlicedInfer()
     cv::imwrite("result/v11NoSlicedInfer.jpg", image);
 
 }
+
+
+void yolo11poseSlicedInfer()
+{
+    const std::vector<std::pair<int, int>> coco_pairs = {
+        {0, 1}, {0, 2}, {0, 11}, {0, 12}, {1, 3}, {2, 4},
+        {5, 6}, {5, 7}, {7, 9}, {6, 8}, {8, 10},
+        {11, 12}, {5, 11}, {6, 12},
+        {11, 13}, {13, 15}, {12, 14}, {14, 16}
+    };
+
+
+    cv::Mat image = cv::imread("inference/persons.jpg");
+    auto yolo = yolo::load("yolo11s-pose.transd.engine", yolo::YoloType::YOLOV11POSE);
+    if (yolo == nullptr) return;
+    // auto objs = yolo->forward(tensor::cvimg(image), image.cols, image.rows, 0.0f, 0.0f);
+    auto objs = yolo->forward(tensor::cvimg(image));
+    printf("objs size : %d\n", objs.size());
+    PositionManager<int> pm(getFontSize);
+    for (auto &obj : objs) 
+    {
+        // obj.dump();
+        uint8_t b, g, r;
+        std::tie(b, g, r) = random_color(obj.class_label);
+        cv::rectangle(image, cv::Point(obj.left, obj.top), cv::Point(obj.right, obj.bottom),
+            cv::Scalar(b, g, r), 5);
+
+        for (const auto& point : obj.pose)
+        {
+            int x = (int)point.x;
+            int y = (int)point.y;
+            cv::circle(image, cv::Point(x, y), 6, cv::Scalar(b, g, r), -1);
+        }
+        for (const auto& pair : coco_pairs) 
+        {
+            int startIdx = pair.first;
+            int endIdx = pair.second;
+
+            if (startIdx < obj.pose.size() && endIdx < obj.pose.size()) 
+            {
+                int x1 = (int)obj.pose[startIdx].x;
+                int y1 = (int)obj.pose[startIdx].y;
+                int x2 = (int)obj.pose[endIdx].x;
+                int y2 = (int)obj.pose[endIdx].y;
+
+                cv::line(image, cv::Point(x1, y1), cv::Point(x2, y2), cv::Scalar(255, 0, 0), 2);
+            }
+        }
+    }
+    
+    printf("Save result to result/yolo11poseSlicedInfer.jpg, %d objects\n", (int)objs.size());
+    cv::imwrite("result/yolo11poseSlicedInfer.jpg", image);
+
+}
+
+void yolo11poseNoSlicedInfer()
+{
+    const std::vector<std::pair<int, int>> coco_pairs = {
+        {0, 1}, {0, 2}, {0, 11}, {0, 12}, {1, 3}, {2, 4},
+        {5, 6}, {5, 7}, {7, 9}, {6, 8}, {8, 10},
+        {11, 12}, {5, 11}, {6, 12},
+        {11, 13}, {13, 15}, {12, 14}, {14, 16}
+    };
+
+
+    cv::Mat image = cv::imread("inference/persons.jpg");
+    auto yolo = yolo::load("yolo11s-pose.transd.engine", yolo::YoloType::YOLOV11POSE);
+    if (yolo == nullptr) return;
+    auto objs = yolo->forward(tensor::cvimg(image), image.cols, image.rows, 0.0f, 0.0f);
+    // auto objs = yolo->forward(tensor::cvimg(image));
+    printf("objs size : %d\n", objs.size());
+    PositionManager<int> pm(getFontSize);
+    for (auto &obj : objs) 
+    {
+        // obj.dump();
+        uint8_t b, g, r;
+        std::tie(b, g, r) = random_color(obj.class_label);
+        cv::rectangle(image, cv::Point(obj.left, obj.top), cv::Point(obj.right, obj.bottom),
+            cv::Scalar(b, g, r), 5);
+
+        for (const auto& point : obj.pose)
+        {
+            int x = (int)point.x;
+            int y = (int)point.y;
+            cv::circle(image, cv::Point(x, y), 6, cv::Scalar(b, g, r), -1);
+        }
+        for (const auto& pair : coco_pairs) 
+        {
+            int startIdx = pair.first;
+            int endIdx = pair.second;
+
+            if (startIdx < obj.pose.size() && endIdx < obj.pose.size()) 
+            {
+                int x1 = (int)obj.pose[startIdx].x;
+                int y1 = (int)obj.pose[startIdx].y;
+                int x2 = (int)obj.pose[endIdx].x;
+                int y2 = (int)obj.pose[endIdx].y;
+
+                cv::line(image, cv::Point(x1, y1), cv::Point(x2, y2), cv::Scalar(255, 0, 0), 2);
+            }
+        }
+    }
+    
+    printf("Save result to result/yolo11poseNoSlicedInfer.jpg, %d objects\n", (int)objs.size());
+    cv::imwrite("result/yolo11poseNoSlicedInfer.jpg", image);
+
+}

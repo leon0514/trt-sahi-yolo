@@ -21,6 +21,8 @@ namespace yolo
 static const int NUM_BOX_ELEMENT = 8;  // left, top, right, bottom, confidence, class, keepflag, row_index(output)
 static const int MAX_IMAGE_BOXES = 1024 * 4;
 
+static const int KEY_POINT_NUM   = 17; // 关键点数量
+
 static dim3 grid_dims(int numJobs){
   int numBlockThreads = numJobs < GPU_BLOCK_THREADS ? numJobs : GPU_BLOCK_THREADS;
   return dim3(((numJobs + numBlockThreads - 1) / (float)numBlockThreads));
@@ -135,6 +137,65 @@ static __global__ void decode_kernel_v8(float *predict, int num_bboxes, int num_
     *pout_item++ = position;
 }
 
+static __global__ void decode_kernel_11pose(float *predict, int num_bboxes, int num_classes,
+    int output_cdim, float confidence_threshold,
+    float *invert_affine_matrix, float *parray,
+    int *box_count, int max_image_boxes, int start_x, int start_y) 
+{
+    int position = blockDim.x * blockIdx.x + threadIdx.x;
+    if (position >= num_bboxes) return;
+
+    float *pitem            = predict + output_cdim * position;
+    float *class_confidence = pitem + 4;
+    float *key_points       = pitem + 4 + num_classes;
+    float confidence        = *class_confidence++;
+
+    int label = 0;
+    for (int i = 1; i < num_classes; ++i, ++class_confidence) 
+    {
+        if (*class_confidence > confidence) 
+        {
+            confidence = *class_confidence;
+            label = i;
+        }
+    }
+    if (confidence < confidence_threshold) return;
+
+    int index = atomicAdd(box_count, 1);
+    if (index >= max_image_boxes) return;
+
+    float cx = *pitem++;
+    float cy = *pitem++;
+    float width = *pitem++;
+    float height = *pitem++;
+    float left = cx - width * 0.5f;
+    float top = cy - height * 0.5f;
+    float right = cx + width * 0.5f;
+    float bottom = cy + height * 0.5f;
+    affine_project(invert_affine_matrix, left, top, &left, &top);
+    affine_project(invert_affine_matrix, right, bottom, &right, &bottom);
+
+    float *pout_item = parray + index * (NUM_BOX_ELEMENT + KEY_POINT_NUM * 3);
+    *pout_item++ = left + start_x;
+    *pout_item++ = top + start_y;
+    *pout_item++ = right + start_x;
+    *pout_item++ = bottom + start_y;
+    *pout_item++ = confidence;
+    *pout_item++ = label;
+    *pout_item++ = 1;  // 1 = keep, 0 = ignore
+    *pout_item++ = position;
+    for (int i = 0; i < KEY_POINT_NUM; i++)
+    {
+        float x = *key_points++;
+        float y = *key_points++;
+        affine_project(invert_affine_matrix, x, y, &x, &y);
+        float score  = *key_points++;
+        *pout_item++ = x + start_x;
+        *pout_item++ = y + start_y;
+        *pout_item++ = score;
+    }
+}
+
 
 static __device__ float box_iou(float aleft, float atop, float aright, float abottom, float bleft,
                                 float btop, float bright, float bbottom)
@@ -182,6 +243,36 @@ static __global__ void fast_nms_kernel(float *bboxes, int* box_count, int max_im
     }
 }
 
+
+static __global__ void fast_nms_pose_kernel(float *bboxes, int* box_count, int max_image_boxes, float threshold) 
+{
+    int position = (blockDim.x * blockIdx.x + threadIdx.x);
+    int count = min((int)*box_count, MAX_IMAGE_BOXES);
+    if (position >= count) return;
+
+    // left, top, right, bottom, confidence, class, keepflag
+    float *pcurrent = bboxes + position * (NUM_BOX_ELEMENT + KEY_POINT_NUM * 3);
+    for (int i = 0; i < count; ++i) 
+    {
+        float *pitem = bboxes + i * (NUM_BOX_ELEMENT + KEY_POINT_NUM * 3);
+        if (i == position || pcurrent[5] != pitem[5]) continue;
+
+        if (pitem[4] >= pcurrent[4]) 
+        {
+            if (pitem[4] == pcurrent[4] && i < position) continue;
+
+            float iou = box_iou(pcurrent[0], pcurrent[1], pcurrent[2], pcurrent[3], pitem[0], pitem[1],
+                                pitem[2], pitem[3]);
+
+            if (iou > threshold) 
+            {
+                pcurrent[6] = 0;  // 1=keep, 0=ignore
+                return;
+            }
+        }
+    }
+}
+
 static void decode_kernel_invoker_v8(float *predict, int num_bboxes, int num_classes, int output_cdim,
                                   float confidence_threshold, float nms_threshold,
                                   float *invert_affine_matrix, float *parray, int* box_count, int max_image_boxes,
@@ -209,11 +300,31 @@ static void decode_kernel_invoker_v5(float *predict, int num_bboxes, int num_cla
             parray, box_count, max_image_boxes, start_x, start_y));
 }
 
+static void decode_kernel_invoker_v11pose(float *predict, int num_bboxes, int num_classes, int output_cdim,
+    float confidence_threshold, float nms_threshold,
+    float *invert_affine_matrix, float *parray, int* box_count, int max_image_boxes,
+    int start_x, int start_y, cudaStream_t stream) 
+{
+    auto grid = grid_dims(num_bboxes);
+    auto block = block_dims(num_bboxes);
+
+    checkKernel(decode_kernel_11pose<<<grid, block, 0, stream>>>(
+            predict, num_bboxes, num_classes, output_cdim, confidence_threshold, invert_affine_matrix,
+            parray, box_count, max_image_boxes, start_x, start_y));
+}
+
 static void fast_nms_kernel_invoker(float *parray, int* box_count, int max_image_boxes, float nms_threshold, cudaStream_t stream)
 {
     auto grid = grid_dims(max_image_boxes);
     auto block = block_dims(max_image_boxes);
     checkKernel(fast_nms_kernel<<<grid, block, 0, stream>>>(parray, box_count, max_image_boxes, nms_threshold));
+}
+
+static void fast_nms_pose_kernel_invoker(float *parray, int* box_count, int max_image_boxes, float nms_threshold, cudaStream_t stream)
+{
+    auto grid = grid_dims(max_image_boxes);
+    auto block = block_dims(max_image_boxes);
+    checkKernel(fast_nms_pose_kernel<<<grid, block, 0, stream>>>(parray, box_count, max_image_boxes, nms_threshold));
 }
 
 class YoloModelImpl : public Infer 
@@ -307,9 +418,14 @@ public:
         {
             num_classes_ = bbox_head_dims_[2] - 4;
         }
-        else
+        else if (this->yolo_type_ == YoloType::YOLOV5)
         {
             num_classes_ = bbox_head_dims_[2] - 5;
+        }
+        else if (this->yolo_type_ == YoloType::YOLOV11POSE)
+        {
+            num_classes_ = bbox_head_dims_[2] - 4 - KEY_POINT_NUM * 3;
+            // NUM_BOX_ELEMENT = 8 + KEY_POINT_NUM * 3;
         }
         return true;
     }
@@ -408,10 +524,24 @@ public:
                                     bbox_head_dims_[2], confidence_threshold_, nms_threshold_,
                                     affine_matrix_device, boxarray_device, box_count, MAX_IMAGE_BOXES, start_x, start_y, stream_);
             }
+            else if (yolo_type_ == YoloType::YOLOV11POSE)
+            {
+                decode_kernel_invoker_v11pose(image_based_bbox_output, bbox_head_dims_[1], num_classes_,
+                    bbox_head_dims_[2], confidence_threshold_, nms_threshold_,
+                    affine_matrix_device, boxarray_device, box_count, MAX_IMAGE_BOXES, start_x, start_y, stream_);
+            }
             
         }
         float *boxarray_device =  output_boxarray_.gpu();
-        fast_nms_kernel_invoker(boxarray_device, box_count, MAX_IMAGE_BOXES, nms_threshold_, stream_);
+        if (yolo_type_ == YoloType::YOLOV11POSE)
+        {
+            fast_nms_pose_kernel_invoker(boxarray_device, box_count, MAX_IMAGE_BOXES, nms_threshold_, stream_);
+        }
+        else
+        {
+            fast_nms_kernel_invoker(boxarray_device, box_count, MAX_IMAGE_BOXES, nms_threshold_, stream_);
+        }
+        
         checkRuntime(cudaMemcpyAsync(output_boxarray_.cpu(), output_boxarray_.gpu(),
                                     output_boxarray_.gpu_bytes(), cudaMemcpyDeviceToHost, stream_));
         checkRuntime(cudaMemcpyAsync(box_count_.cpu(), box_count_.gpu(),
@@ -422,13 +552,25 @@ public:
         // int imemory = 0;
         float *parray = output_boxarray_.cpu();
         int count = min(MAX_IMAGE_BOXES, *(box_count_.cpu()));
+
         for (int i = 0; i < count; ++i) 
         {
-            float *pbox = parray + i * NUM_BOX_ELEMENT;
+            int box_element = (yolo_type_ == YoloType::YOLOV11POSE) ? (NUM_BOX_ELEMENT + KEY_POINT_NUM * 3) : NUM_BOX_ELEMENT;
+            float *pbox = parray + i * box_element;
             int label = pbox[5];
             int keepflag = pbox[6];
-            if (keepflag == 1) {
+            if (keepflag == 1) 
+            {
                 Box result_object_box(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], label);
+                if (yolo_type_ == YoloType::YOLOV11POSE)
+                {
+                    result_object_box.pose.reserve(KEY_POINT_NUM);
+                    for (int i = 0; i < KEY_POINT_NUM; i++)
+                    {
+                        result_object_box.pose.emplace_back(pbox[8+i*3], pbox[8+i*3+1], pbox[8+i*3+2]);
+                    }
+                }
+                
                 result.emplace_back(result_object_box);
             }
         }

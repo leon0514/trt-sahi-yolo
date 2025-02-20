@@ -45,8 +45,8 @@ def change_output_node_name(model, output_names):
         output.name = output_name
  
  
-onnx_path = "yolo11s.onnx"
-save_path = "yolo11s-dyn.onnx"
+onnx_path = "yolo11s-pose.transd.onnx"
+save_path = "yolo11s-pose.transd.dyn.onnx"
 model = onnx.load(onnx_path)
 change_input_output_dim(model)
 # change_input_node_name(model, ["data"])
