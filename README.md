@@ -149,7 +149,7 @@ pybind11-stubgen trtsahiyolo.so -o ./
 ### Python 使用
 ```python
 import trtsahiyolo
-from trtsahiyolo import YoloType as YoloType
+from trtsahiyolo import YoloType
 import cv2
 
 model = trtsahiyolo.TrtSahiYolo("yolo11s.engine", YoloType.YOLOV11, 0, 0.3, 0.45)
