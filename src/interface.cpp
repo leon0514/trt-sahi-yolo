@@ -156,6 +156,7 @@ PYBIND11_MODULE(trtsahiyolo, m){
         .value("YOLOV5", yolo::YoloType::YOLOV5)
         .value("YOLOV8", yolo::YoloType::YOLOV8)
         .value("YOLOV11", yolo::YoloType::YOLOV11)
+        .value("YOLOV11POSE", yolo::YoloType::YOLOV11POSE)
         .export_values();
 
     py::class_<yolo::Box>(m, "Box")
@@ -165,6 +166,7 @@ PYBIND11_MODULE(trtsahiyolo, m){
         .def_readwrite("bottom", &yolo::Box::bottom)
         .def_readwrite("confidence", &yolo::Box::confidence)
         .def_readwrite("class_label", &yolo::Box::class_label)
+        .def_readwrite("pose", &yolo::Box::pose)
         .def("__repr__", [](const yolo::Box &box) {
             std::ostringstream oss;
             oss << "Box(left: " << box.left
