@@ -109,6 +109,15 @@ printf("objs size : %d\n", objs.size());
    <img src="https://github.com/leon0514/trt-sahi-yolo/blob/main/assert/yolo11poseNoSlicedInfer.jpg?raw=true" width="45%"/>
 </div>
 
+## 新增Yolo11-seg
+<div align="center">
+   <img src="https://github.com/leon0514/trt-sahi-yolo/blob/main/assert/yolo11seg-slice.jpg?raw=true" width="45%"/>
+   <img src="https://github.com/leon0514/trt-sahi-yolo/blob/main/assert/yolo11seg-noslice.jpg?raw=true" width="45%"/>
+</div>
+
+代码整理中
+
+
 ## 速度对比
 | 显卡   | 模型   | 切割数量 | 运行次数 | 时间       |
 |--------|--------|----------|----------|------------|
@@ -165,5 +174,5 @@ print(result)
 - [x] **NMS 实现**：完成所有子图的 NMS 处理逻辑，去除冗余框。已完成
 - [x] **TensorRT8支持**：完成使用 **TensorRT8** 和 **TensorRT10** API
 - [x] **Python支持**：使用 **Pybind11** 封装，使用 **Pyton** 调用
-- [ ] **更多模型支持**：添加对其他 YOLO 模型版本的支持。目前支持 **YOLOv11/YOLOv11-Pose/YOLOv8/YOLOv5**
+- [ ] **更多模型支持**：添加对其他 YOLO 模型版本的支持。目前支持 **YOLO11/YOLO11-Pose/YOLO11-SEG/YOLOv8/YOLOv5**
 
