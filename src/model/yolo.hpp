@@ -1,8 +1,10 @@
 #ifndef YOLOV11_HPP__
 #define YOLOV11_HPP__
-#include <vector>
 #include "common/memory.hpp"
 #include "common/image.hpp"
+#include "common/check.hpp"
+#include <cuda_runtime.h>
+#include <vector>
 #include <iomanip>
 
 namespace yolo
@@ -16,11 +18,36 @@ struct Point
         x(x), y(y), vis(vis) {}
 };
 
+struct InstanceSegmentMap 
+{
+    int width = 0, height = 0;      // width % 8 == 0
+    unsigned char *data = nullptr;  // is width * height memory
+  
+    InstanceSegmentMap(int width, int height)
+    {
+        this->width = width;
+        this->height = height;
+        checkRuntime(cudaMallocHost(&this->data, width * height));
+    }
+    virtual ~InstanceSegmentMap()
+    {
+        if (this->data) 
+        {
+            checkRuntime(cudaFreeHost(this->data));
+            this->data = nullptr;
+        }
+        this->width = 0;
+        this->height = 0; 
+    }
+};
+
 struct Box 
 {
     float left, top, right, bottom, confidence;
     int class_label;
     std::vector<Point> pose;
+
+    std::shared_ptr<InstanceSegmentMap> seg;  // valid only in segment task
 
     Box() = default;
     Box(float left, float top, float right, float bottom, float confidence, int class_label)
@@ -46,9 +73,13 @@ struct Box
 
 enum class YoloType : int{
     YOLOV5  = 0,
-    YOLOV8  = 1,
-    YOLOV11 = 2,
-    YOLOV11POSE = 3
+    YOLOV5SEG = 1,
+    YOLOV8  = 2,
+    YOLOV8POSE = 3,
+    YOLOV8SEG = 4,
+    YOLOV11 = 5,
+    YOLOV11POSE = 6,
+    YOLOV11SEG = 7,
 };
 
 using BoxArray = std::vector<Box>;

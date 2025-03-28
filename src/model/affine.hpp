@@ -107,6 +107,12 @@ void warp_affine_bilinear_and_normalize_plane(uint8_t *src, int src_line_size, i
                                                 uint8_t const_value, const Norm &norm,
                                                 cudaStream_t stream);
 
+
+void warp_affine_bilinear_single_channel_plane(float *src, int src_line_size, int src_width,
+    int src_height, uint8_t *dst, int dst_width,
+    int dst_height, float *matrix_2_3,
+    uint8_t const_value, cudaStream_t stream);
+
 }
 
 

@@ -339,3 +339,5 @@ void yolo11poseNoSlicedInfer()
     cv::imwrite("result/yolo11poseNoSlicedInfer.jpg", image);
 
 }
+
+

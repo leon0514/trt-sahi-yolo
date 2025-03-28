@@ -18,7 +18,11 @@ namespace TensorRT = TensorRT8;
 namespace yolo
 {
 
-static const int NUM_BOX_ELEMENT = 8;  // left, top, right, bottom, confidence, class, keepflag, row_index(output)
+
+static const int NUM_BOX_ELEMENT = 9;  // left, top, right, bottom, confidence, class, keepflag, row_index(output), batch_index
+// 9个元素，分别是：左上角坐标，右下角坐标，置信度，类别，是否保留，行索引（mask weights），batch_index
+// 其中行索引用于找到mask weights，batch_index用于找到当前batch的图片位置
+// row_index 用于找到mask weights
 static const int MAX_IMAGE_BOXES = 1024 * 4;
 
 static const int KEY_POINT_NUM   = 17; // 关键点数量
@@ -41,7 +45,7 @@ static __host__ __device__ void affine_project(float *matrix, float x, float y, 
 static __global__ void decode_kernel_v5(float *predict, int num_bboxes, int num_classes,
                                               int output_cdim, float confidence_threshold,
                                               float *invert_affine_matrix, float *parray, int *box_count,
-                                              int max_image_boxes, int start_x, int start_y) 
+                                              int max_image_boxes, int start_x, int start_y, int batch_index) 
 {
     int position = blockDim.x * blockIdx.x + threadIdx.x;
     if (position >= num_bboxes) return;
@@ -88,12 +92,14 @@ static __global__ void decode_kernel_v5(float *predict, int num_bboxes, int num_
     *pout_item++ = label;
     *pout_item++ = 1;  // 1 = keep, 0 = ignore
     *pout_item++ = position;
+    *pout_item++ = batch_index; // batch_index
+    // 这里的batch_index是为了在后续的mask weights中使用，方便找到当前batch的图片位置
 }
 
 static __global__ void decode_kernel_v8(float *predict, int num_bboxes, int num_classes,
                                               int output_cdim, float confidence_threshold,
                                               float *invert_affine_matrix, float *parray, int *box_count,
-                                              int max_image_boxes, int start_x, int start_y) 
+                                              int max_image_boxes, int start_x, int start_y, int batch_index) 
 {
     int position = blockDim.x * blockIdx.x + threadIdx.x;
     if (position >= num_bboxes) return;
@@ -135,12 +141,14 @@ static __global__ void decode_kernel_v8(float *predict, int num_bboxes, int num_
     *pout_item++ = label;
     *pout_item++ = 1;  // 1 = keep, 0 = ignore
     *pout_item++ = position;
+    *pout_item++ = batch_index; // batch_index
+    // 这里的batch_index是为了在后续的mask weights中使用，方便找到当前batch的图片位置
 }
 
 static __global__ void decode_kernel_11pose(float *predict, int num_bboxes, int num_classes,
     int output_cdim, float confidence_threshold,
     float *invert_affine_matrix, float *parray,
-    int *box_count, int max_image_boxes, int start_x, int start_y) 
+    int *box_count, int max_image_boxes, int start_x, int start_y, int batch_index) 
 {
     int position = blockDim.x * blockIdx.x + threadIdx.x;
     if (position >= num_bboxes) return;
@@ -184,6 +192,7 @@ static __global__ void decode_kernel_11pose(float *predict, int num_bboxes, int 
     *pout_item++ = label;
     *pout_item++ = 1;  // 1 = keep, 0 = ignore
     *pout_item++ = position;
+    *pout_item++ = batch_index; // batch_index
     for (int i = 0; i < KEY_POINT_NUM; i++)
     {
         float x = *key_points++;
@@ -273,44 +282,90 @@ static __global__ void fast_nms_pose_kernel(float *bboxes, int* box_count, int m
     }
 }
 
+
+static __global__ void decode_single_mask_kernel(int left, int top, float *mask_weights,
+    float *mask_predict, int mask_width,
+    int mask_height, float *mask_out,
+    int mask_dim, int out_width, int out_height) 
+{
+    // mask_predict to mask_out
+    // mask_weights @ mask_predict
+    int dx = blockDim.x * blockIdx.x + threadIdx.x;
+    int dy = blockDim.y * blockIdx.y + threadIdx.y;
+    if (dx >= out_width || dy >= out_height) return;
+
+    int sx = left + dx;
+    int sy = top + dy;
+    if (sx < 0 || sx >= mask_width || sy < 0 || sy >= mask_height) 
+    {
+        mask_out[dy * out_width + dx] = 0;
+        return;
+    }
+
+    float cumprod = 0;
+    for (int ic = 0; ic < mask_dim; ++ic) 
+    {
+        float cval = mask_predict[(ic * mask_height + sy) * mask_width + sx];
+        float wval = mask_weights[ic];
+        cumprod += cval * wval;
+    }
+
+    float alpha = 1.0f / (1.0f + exp(-cumprod));
+    // 在这里先返回float值，再将mask采样回原图后才x255
+    mask_out[dy * out_width + dx] = alpha;
+}
+
+static void decode_single_mask(float left, float top, float *mask_weights, float *mask_predict,
+                            int mask_width, int mask_height, float *mask_out,
+                            int mask_dim, int out_width, int out_height, cudaStream_t stream) 
+{
+    // mask_weights is mask_dim(32 element) gpu pointer
+    dim3 grid((out_width + 31) / 32, (out_height + 31) / 32);
+    dim3 block(32, 32);
+
+    checkKernel(decode_single_mask_kernel<<<grid, block, 0, stream>>>(
+    left, top, mask_weights, mask_predict, mask_width, mask_height, mask_out, mask_dim, out_width,
+    out_height));
+}
+
 static void decode_kernel_invoker_v8(float *predict, int num_bboxes, int num_classes, int output_cdim,
                                   float confidence_threshold, float nms_threshold,
                                   float *invert_affine_matrix, float *parray, int* box_count, int max_image_boxes,
-                                  int start_x, int start_y, cudaStream_t stream) 
+                                  int start_x, int start_y, int batch_index, cudaStream_t stream) 
 {
     auto grid = grid_dims(num_bboxes);
     auto block = block_dims(num_bboxes);
 
     checkKernel(decode_kernel_v8<<<grid, block, 0, stream>>>(
             predict, num_bboxes, num_classes, output_cdim, confidence_threshold, invert_affine_matrix,
-            parray, box_count, max_image_boxes, start_x, start_y));
+            parray, box_count, max_image_boxes, start_x, start_y, batch_index));
 }
 
 
 static void decode_kernel_invoker_v5(float *predict, int num_bboxes, int num_classes, int output_cdim,
                                   float confidence_threshold, float nms_threshold,
                                   float *invert_affine_matrix, float *parray, int* box_count, int max_image_boxes,
-                                  int start_x, int start_y, cudaStream_t stream) 
+                                  int start_x, int start_y, int batch_index, cudaStream_t stream) 
 {
     auto grid = grid_dims(num_bboxes);
     auto block = block_dims(num_bboxes);
 
     checkKernel(decode_kernel_v5<<<grid, block, 0, stream>>>(
             predict, num_bboxes, num_classes, output_cdim, confidence_threshold, invert_affine_matrix,
-            parray, box_count, max_image_boxes, start_x, start_y));
+            parray, box_count, max_image_boxes, start_x, start_y, batch_index));
 }
 
 static void decode_kernel_invoker_v11pose(float *predict, int num_bboxes, int num_classes, int output_cdim,
     float confidence_threshold, float nms_threshold,
     float *invert_affine_matrix, float *parray, int* box_count, int max_image_boxes,
-    int start_x, int start_y, cudaStream_t stream) 
+    int start_x, int start_y, int batch_index, cudaStream_t stream) 
 {
     auto grid = grid_dims(num_bboxes);
     auto block = block_dims(num_bboxes);
 
     checkKernel(decode_kernel_11pose<<<grid, block, 0, stream>>>(
             predict, num_bboxes, num_classes, output_cdim, confidence_threshold, invert_affine_matrix,
-            parray, box_count, max_image_boxes, start_x, start_y));
+            parray, box_count, max_image_boxes, start_x, start_y, batch_index));
 }
 
 static void fast_nms_kernel_invoker(float *parray, int* box_count, int max_image_boxes, float nms_threshold, cudaStream_t stream)
@@ -340,12 +395,18 @@ public:
     tensor::Memory<int> box_count_;
 
     tensor::Memory<float> affine_matrix_;
-    tensor::Memory<float>  input_buffer_, bbox_predict_, output_boxarray_;
+    tensor::Memory<float> invert_affine_matrix_;
+    tensor::Memory<float> mask_affine_matrix_;
+    tensor::Memory<float> input_buffer_, bbox_predict_, segment_predict_, output_boxarray_;
 
     int network_input_width_, network_input_height_;
     affine::Norm normalize_;
     std::vector<int> bbox_head_dims_;
+    std::vector<int> segment_head_dims_;
     bool isdynamic_model_ = false;
+    bool has_segment_ = false;
+
+    std::vector<std::shared_ptr<tensor::Memory<float>>> box_segment_cache_;
 
     float confidence_threshold_;
     float nms_threshold_;
@@ -363,8 +424,20 @@ public:
         output_boxarray_.gpu(MAX_IMAGE_BOXES * NUM_BOX_ELEMENT);
         output_boxarray_.cpu(MAX_IMAGE_BOXES * NUM_BOX_ELEMENT);
 
+        if (has_segment_)
+        {
+            segment_predict_.gpu(batch_size * segment_head_dims_[1] * segment_head_dims_[2] *
+                                 segment_head_dims_[3]);
+        }
+        
+
         affine_matrix_.gpu(6);
         affine_matrix_.cpu(6);
+        invert_affine_matrix_.gpu(6);
+        invert_affine_matrix_.cpu(6);
+
+        mask_affine_matrix_.gpu(6);
+        mask_affine_matrix_.cpu(6);
 
         box_count_.gpu(1);
         box_count_.cpu(1);
@@ -384,9 +457,16 @@ public:
 
         float *affine_matrix_host = affine_matrix_.cpu();
 
+	float *invert_affine_matrix_device = invert_affine_matrix_.gpu();
+        float *invert_affine_matrix_host = invert_affine_matrix_.cpu();
+
         // speed up
         cudaStream_t stream_ = (cudaStream_t)stream;
-        memcpy(affine_matrix_host, affine.d2i, sizeof(affine.d2i));
+        
+	memcpy(invert_affine_matrix_host, affine.i2d, sizeof(affine.i2d));
+        checkRuntime(cudaMemcpyAsync(invert_affine_matrix_device, invert_affine_matrix_host, sizeof(affine.i2d), cudaMemcpyHostToDevice, stream_));
+	
+	memcpy(affine_matrix_host, affine.d2i, sizeof(affine.d2i));
         checkRuntime(cudaMemcpyAsync(affine_matrix_device, affine_matrix_host, sizeof(affine.d2i),
                                     cudaMemcpyHostToDevice, stream_));
 
@@ -407,8 +487,21 @@ public:
         this->nms_threshold_ = nms_threshold;
         this->yolo_type_ = yolo_type;
 
-        auto input_dim = trt_->static_dims(0);
+        auto input_dim  = trt_->static_dims(0);
         bbox_head_dims_ = trt_->static_dims(1);
+
+        has_segment_ = yolo_type == YoloType::YOLOV8SEG || yolo_type == YoloType::YOLOV5SEG || yolo_type == YoloType::YOLOV11SEG;
+	printf("has_segment_ = %d\n", has_segment_);
+        if (has_segment_) {
+            bbox_head_dims_    = trt_->static_dims(1);
+            segment_head_dims_ = trt_->static_dims(2);
+        }
+	for (const auto& dim : segment_head_dims_)
+	{
+	    printf("dim = %d\t", dim);
+	}
+	printf("\n");
+
         network_input_width_ = input_dim[3];
         network_input_height_ = input_dim[2];
         isdynamic_model_ = trt_->has_dynamic_dim();
@@ -427,6 +520,10 @@ public:
             num_classes_ = bbox_head_dims_[2] - 4 - KEY_POINT_NUM * 3;
             // NUM_BOX_ELEMENT = 8 + KEY_POINT_NUM * 3;
         }
+	else if (this->yolo_type_ == YoloType::YOLOV11SEG)
+	{
+	    num_classes_ = bbox_head_dims_[2] - 4 - segment_head_dims_[1];
+	}
         return true;
     }
 
@@ -483,17 +580,42 @@ public:
 
         float *bbox_output_device = bbox_predict_.gpu();
         #ifdef TRT10
-        if (!trt_->forward(std::unordered_map<std::string, const void *>{
+        std::unordered_map<std::string, const void *> bindings;
+        if (has_segment_)
+        {
+            float *segment_output_device = segment_predict_.gpu();
+            bindings = {
                 { "images", input_buffer_.gpu() }, 
-                { "output0", bbox_predict_.gpu() }
-            }, stream_))
+                { "output0", bbox_output_device },
+                { "output1", segment_output_device }
+            };
+        }
+        else
+        {
+            bindings = {
+                { "images", input_buffer_.gpu() }, 
+                { "output0", bbox_output_device }
+            };
+           
+        } 
+        if (!trt_->forward(bindings, stream_))
         {
             printf("Failed to tensorRT forward.");
             return {};
         }
         #else
         std::vector<void *> bindings{input_buffer_.gpu(), bbox_output_device};
-        if (!trt_->forward(bindings, stream)) 
+        if (has_segment_)
+        {
+            float *segment_output_device = segment_predicr_.gpu();
+            bindings = { input_buffer_.gpu(), bbox_output_device, segment_predicr_.gpu()};
+        }
+        else
+        {
+            bindings = { input_buffer_.gpu(), bbox_output_device };
+           
+        } 
+        if (!trt_->forward(bindings, stream_))
         {
             printf("Failed to tensorRT forward.");
             return {};
@@ -512,23 +634,23 @@ public:
             float *affine_matrix_device = affine_matrix_.gpu();
             float *image_based_bbox_output =
                 bbox_output_device + ib * (bbox_head_dims_[1] * bbox_head_dims_[2]);
-            if (yolo_type_ == YoloType::YOLOV5)
+            if (yolo_type_ == YoloType::YOLOV5 || yolo_type_ == YoloType::YOLOV5SEG)
             {
                 decode_kernel_invoker_v5(image_based_bbox_output, bbox_head_dims_[1], num_classes_,
                                     bbox_head_dims_[2], confidence_threshold_, nms_threshold_,
-                                    affine_matrix_device, boxarray_device, box_count, MAX_IMAGE_BOXES, start_x, start_y, stream_);
+                                    affine_matrix_device, boxarray_device, box_count, MAX_IMAGE_BOXES, start_x, start_y, ib, stream_);
             }
-            else if (yolo_type_ == YoloType::YOLOV8 || yolo_type_ == YoloType::YOLOV11)
+            else if (yolo_type_ == YoloType::YOLOV8 || yolo_type_ == YoloType::YOLOV11 || yolo_type_ == YoloType::YOLOV8SEG || yolo_type_ == YoloType::YOLOV11SEG)
             {
                 decode_kernel_invoker_v8(image_based_bbox_output, bbox_head_dims_[1], num_classes_,
                                     bbox_head_dims_[2], confidence_threshold_, nms_threshold_,
-                                    affine_matrix_device, boxarray_device, box_count, MAX_IMAGE_BOXES, start_x, start_y, stream_);
+                                    affine_matrix_device, boxarray_device, box_count, MAX_IMAGE_BOXES, start_x, start_y, ib, stream_);
             }
             else if (yolo_type_ == YoloType::YOLOV11POSE)
             {
                 decode_kernel_invoker_v11pose(image_based_bbox_output, bbox_head_dims_[1], num_classes_,
                     bbox_head_dims_[2], confidence_threshold_, nms_threshold_,
-                    affine_matrix_device, boxarray_device, box_count, MAX_IMAGE_BOXES, start_x, start_y, stream_);
+                    affine_matrix_device, boxarray_device, box_count, MAX_IMAGE_BOXES, start_x, start_y, ib, stream_);
             }
             
         }
@@ -549,10 +671,10 @@ public:
         checkRuntime(cudaStreamSynchronize(stream_));
 
         BoxArray result;
-        // int imemory = 0;
         float *parray = output_boxarray_.cpu();
         int count = min(MAX_IMAGE_BOXES, *(box_count_.cpu()));
 
+        int imemory = 0;
         for (int i = 0; i < count; ++i) 
         {
             int box_element = (yolo_type_ == YoloType::YOLOV11POSE) ? (NUM_BOX_ELEMENT + KEY_POINT_NUM * 3) : NUM_BOX_ELEMENT;
@@ -568,6 +690,91 @@ public:
                     for (int i = 0; i < KEY_POINT_NUM; i++)
                     {
                         result_object_box.pose.emplace_back(pbox[8+i*3], pbox[8+i*3+1], pbox[8+i*3+2]);
+                    }
+                }
+                if (has_segment_)
+                {
+                    int row_index = pbox[7];
+                    int batch_index = pbox[8];
+
+                    int start_x = slice_->slice_start_point_.cpu()[batch_index*2];
+                    int start_y = slice_->slice_start_point_.cpu()[batch_index*2+1];
+
+                    int mask_dim = segment_head_dims_[1];
+                    float *mask_weights = bbox_output_device +
+                                        (batch_index * bbox_head_dims_[1] + row_index) * bbox_head_dims_[2] +
+                                        num_classes_ + 4;
+
+                    float *mask_head_predict = segment_predict_.gpu();
+                    float left, top, right, bottom;
+                    // 变回640 x 640下的坐标
+                    float *i2d = invert_affine_matrix_.cpu();
+                    affine_project(i2d, pbox[0] - start_x, pbox[1] - start_y, &left, &top);
+                    affine_project(i2d, pbox[2] - start_x, pbox[3] - start_y, &right, &bottom);
+
+                    int oirginal_box_width  = pbox[2] - pbox[0];
+                    int oirginal_box_height = pbox[3] - pbox[1];
+
+                    float box_width = right - left;
+                    float box_height = bottom - top;
+                    
+                    // 变成160 x 160下的坐标
+                    float scale_to_predict_x = segment_head_dims_[3] / (float)network_input_width_;
+                    float scale_to_predict_y = segment_head_dims_[2] / (float)network_input_height_;
+                    left = left * scale_to_predict_x + 0.5f;
+                    top = top * scale_to_predict_y + 0.5f;
+                    int mask_out_width = box_width * scale_to_predict_x + 0.5f;
+                    int mask_out_height = box_height * scale_to_predict_y + 0.5f;
+
+                    if (mask_out_width > 0 && mask_out_height > 0) 
+                    {
+                        if (imemory >= (int)box_segment_cache_.size()) 
+                        {
+                            box_segment_cache_.push_back(std::make_shared<tensor::Memory<float>>());
+                        }
+                        int bytes_of_mask_out = mask_out_width * mask_out_height;
+                        auto box_segment_output_memory = box_segment_cache_[imemory];
+
+                        result_object_box.seg =
+                        std::make_shared<InstanceSegmentMap>(oirginal_box_width, oirginal_box_height);
+
+                        float *mask_out_device = box_segment_output_memory->gpu(bytes_of_mask_out);
+                        unsigned char *original_mask_out_host = result_object_box.seg->data;
+
+                        decode_single_mask(left, top, mask_weights,
+                                            mask_head_predict + batch_index * segment_head_dims_[1] *
+                                                                    segment_head_dims_[2] *
+                                                                    segment_head_dims_[3],
+                                            segment_head_dims_[3], segment_head_dims_[2], mask_out_device,
+                                            mask_dim, mask_out_width, mask_out_height, stream_);
+                    
+                        tensor::Memory<unsigned char> original_mask_out;
+                        original_mask_out.gpu(oirginal_box_width * oirginal_box_height);
+                        unsigned char *original_mask_out_device = original_mask_out.gpu();
+                        
+                        // 将160 x 160下的mask变换回原图下的mask 的变换矩阵
+                        affine::LetterBoxMatrix mask_affine_matrix;
+                        mask_affine_matrix.compute(std::make_tuple(mask_out_width, mask_out_height),
+                                                std::make_tuple(oirginal_box_width, oirginal_box_height));
+
+                        float *mask_affine_matrix_device = mask_affine_matrix_.gpu();
+                        float *mask_affine_matrix_host = mask_affine_matrix_.cpu();
+
+                        memcpy(mask_affine_matrix_host, mask_affine_matrix.d2i, sizeof(mask_affine_matrix.d2i));
+                        checkRuntime(cudaMemcpyAsync(mask_affine_matrix_device, mask_affine_matrix_host,
+                                                    sizeof(mask_affine_matrix.d2i), cudaMemcpyHostToDevice,
+                                                    stream_));
+
+                        // 单通道的变换矩阵
+                        // 在这里做过插值后将mask的值由0-1 变为 0-255，并且将 < 0.5的丢弃，不然范围会很大。
+                        // 先变为0-255再做插值会有锯齿
+                        affine::warp_affine_bilinear_single_channel_plane(
+                            mask_out_device, mask_out_width, mask_out_width, mask_out_height,
+                            original_mask_out_device, oirginal_box_width, oirginal_box_height,
+                            mask_affine_matrix_device, 0, stream_);
+                        checkRuntime(cudaMemcpyAsync(original_mask_out_host, original_mask_out_device,
+                                                    original_mask_out.gpu_bytes(),
+                                                    cudaMemcpyDeviceToHost, stream_));
                     }
                 }
                 
