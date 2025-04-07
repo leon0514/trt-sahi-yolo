@@ -689,7 +689,7 @@ public:
                     result_object_box.pose.reserve(KEY_POINT_NUM);
                     for (int i = 0; i < KEY_POINT_NUM; i++)
                     {
-                        result_object_box.pose.emplace_back(pbox[8+i*3], pbox[8+i*3+1], pbox[8+i*3+2]);
+                        result_object_box.pose.emplace_back(pbox[9+i*3], pbox[9+i*3+1], pbox[9+i*3+2]);
                     }
                 }
                 if (has_segment_)
