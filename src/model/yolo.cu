@@ -607,8 +607,8 @@ public:
         std::vector<void *> bindings{input_buffer_.gpu(), bbox_output_device};
         if (has_segment_)
         {
-            float *segment_output_device = segment_predicr_.gpu();
-            bindings = { input_buffer_.gpu(), bbox_output_device, segment_predicr_.gpu()};
+            float *segment_output_device = segment_predict_.gpu();
+            bindings = { input_buffer_.gpu(), bbox_output_device, segment_predict_.gpu()};
         }
         else
         {
