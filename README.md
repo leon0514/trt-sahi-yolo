@@ -13,6 +13,10 @@
    使用 **TensorRT** 进行深度学习模型推理加速。
    目前支持 **TensorRT8** 和 **TensorRT10** API
 
+## Engine 导出
+1. 导出动态onnx
+2. 对于yolov8、yolov11模型需要执行v8trans.py脚本对输出做一个转置
+3. 使用trtexec 导出engine模型，指定为动态batch，需要将最大batch设置的大一些，避免切割图的数量大于最大batch
 
 ## 注意事项
 1. 模型需要是动态batch的
