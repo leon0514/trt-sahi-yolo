@@ -1,0 +1,271 @@
+#include "common/affine.hpp"
+#include "common/check.hpp"
+#include "common/image.hpp"
+#include "kernels/kernel_warp.hpp"
+#include "trt/yolo/yolo11.hpp"
+namespace yolo
+{
+
+bool Yolo11ModelImpl::load(const std::string &engine_file,
+                           const std::vector<std::string> &names,
+                           float confidence_threshold,
+                           float nms_threshold,
+                           int gpu_id,
+                           int max_batch_size)
+{
+    trt_       = TensorRT::load(engine_file);
+    device_id_ = gpu_id;
+    if (trt_ == nullptr)
+        return false;
+
+    trt_->print();
+
+    this->confidence_threshold_ = confidence_threshold;
+    this->nms_threshold_        = nms_threshold;
+    this->class_names_          = names;
+    this->max_batch_size_       = max_batch_size;
+
+    auto input_dim  = trt_->static_dims(0);
+    bbox_head_dims_ = trt_->static_dims(1);
+
+    network_input_width_  = input_dim[3];
+    network_input_height_ = input_dim[2];
+    isdynamic_model_      = trt_->has_dynamic_dim();
+
+    normalize_   = norm_image::Norm::alpha_beta(1 / 255.0f, 0.0f, norm_image::ChannelType::SwapRB);
+    num_classes_ = bbox_head_dims_[2] - 4;
+    return true;
+}
+
+void Yolo11ModelImpl::adjust_memory(int batch_size)
+{
+    size_t input_numel = network_input_width_ * network_input_height_ * 3;
+    input_buffer_.gpu(batch_size * input_numel);
+    bbox_predict_.gpu(batch_size * bbox_head_dims_[1] * bbox_head_dims_[2]);
+
+    output_boxarray_.gpu(batch_size * (max_image_boxes_ * num_box_element_));
+    output_boxarray_.cpu(batch_size * (max_image_boxes_ * num_box_element_));
+
+    if ((int)preprocess_buffers_.size() < batch_size)
+    {
+        for (int i = preprocess_buffers_.size(); i < batch_size; ++i)
+        {
+            // 分配图片所需要的空间
+            preprocess_buffers_.push_back(std::make_shared<tensor::Memory<unsigned char>>());
+            image_box_counts_.push_back(std::make_shared<tensor::Memory<int>>());
+            affine_matrixs_.push_back(std::make_shared<tensor::Memory<float>>());
+            // 分配记录框所需要的空间
+            image_box_counts_[i]->gpu(1);
+            image_box_counts_[i]->cpu(1);
+            // 分配仿射矩阵苏需要的空间
+            affine_matrixs_[i]->gpu(6);
+            affine_matrixs_[i]->cpu(6);
+        }
+    }
+}
+
+void Yolo11ModelImpl::preprocess(int ibatch,
+                                 const tensor::Image &image,
+                                 std::shared_ptr<tensor::Memory<unsigned char>> preprocess_buffer,
+                                 affine::LetterBoxMatrix &affine,
+                                 void *stream)
+{
+    affine.compute(std::make_tuple(image.width, image.height),
+                   std::make_tuple(network_input_width_, network_input_height_));
+    size_t input_numel  = network_input_width_ * network_input_height_ * 3;
+    float *input_device = input_buffer_.gpu() + ibatch * input_numel;
+    size_t size_image   = image.width * image.height * 3;
+
+    uint8_t *image_device = preprocess_buffer->gpu(size_image);
+    uint8_t *image_host   = preprocess_buffer->cpu(size_image);
+
+    float *affine_matrix_device = affine_matrixs_[ibatch]->gpu();
+    float *affine_matrix_host   = affine_matrixs_[ibatch]->cpu();
+
+    cudaStream_t stream_ = (cudaStream_t)stream;
+    memcpy(image_host, image.bgrptr, size_image);
+    memcpy(affine_matrix_host, affine.d2i, sizeof(affine.d2i));
+    checkRuntime(cudaMemcpyAsync(image_device, image_host, size_image, cudaMemcpyHostToDevice, stream_));
+    checkRuntime(
+        cudaMemcpyAsync(affine_matrix_device, affine_matrix_host, sizeof(affine.d2i), cudaMemcpyHostToDevice, stream_));
+
+    warp_affine_bilinear_and_normalize_plane(image_device,
+                                             image.width * 3,
+                                             image.width,
+                                             image.height,
+                                             input_device,
+                                             network_input_width_,
+                                             network_input_height_,
+                                             affine_matrix_device,
+                                             114,
+                                             normalize_,
+                                             stream_);
+}
+
+InferResult Yolo11ModelImpl::forwards(const std::vector<cv::Mat> &inputs, void *stream)
+{
+    // 推理图片数量
+    int num_image = inputs.size();
+    assert(num_image <= max_batch_size_);
+    // 输入的维度 batch x 3 x width x height
+    auto input_dims      = trt_->static_dims(0);
+    int infer_batch_size = input_dims[0];
+
+    if (infer_batch_size != num_image)
+    {
+        if (isdynamic_model_)
+        {
+            infer_batch_size = num_image;
+            input_dims[0]    = num_image;
+            if (!trt_->set_run_dims(0, input_dims))
+            {
+                printf("Fail to set run dims\n");
+                return {};
+            }
+        }
+        else
+        {
+            if (infer_batch_size < num_image)
+            {
+                printf("When using static shape model, number of images[%d] must be "
+                       "less than or equal to the maximum batch[%d].\n",
+                       num_image,
+                       infer_batch_size);
+                return {};
+            }
+        }
+    }
+    // 分配存储空间
+    adjust_memory(infer_batch_size);
+    std::vector<affine::LetterBoxMatrix> affine_matrixs(infer_batch_size);
+
+    cudaStream_t stream_ = (cudaStream_t)stream;
+    for (int i = 0; i < num_image; ++i)
+    {
+        preprocess(i,
+                   tensor::Image(inputs[i].data, inputs[i].cols, inputs[i].rows),
+                   preprocess_buffers_[i],
+                   affine_matrixs[i],
+                   stream);
+    }
+    float *bbox_output_device = bbox_predict_.gpu();
+
+#if NV_TENSORRT_MAJOR >= 10
+    // yolov5 模型推理
+    // TensorRT10需要指定输入输出名字，这里的输入输出分别是images, output0
+    std::unordered_map<std::string, const void *> bindings = {{"images", input_buffer_.gpu()},
+                                                              {"output0", bbox_output_device}};
+    if (!trt_->forward(bindings, stream_))
+    {
+        printf("Failed to tensorRT forward.\n");
+        return {};
+    }
+#else
+    std::vector<void *> bindings{input_buffer_.gpu(), bbox_output_device};
+    if (!trt_->forward(bindings, stream_))
+    {
+        printf("Failed to tensorRT forward.\n");
+        return {};
+    }
+#endif
+
+    for (int ib = 0; ib < infer_batch_size; ++ib)
+    {
+        int *box_count = image_box_counts_[ib]->gpu();
+        checkRuntime(cudaMemsetAsync(box_count, 0, sizeof(int), stream_));
+        float *boxarray_device         = output_boxarray_.gpu() + ib * (max_image_boxes_ * num_box_element_);
+        float *affine_matrix_device    = affine_matrixs_[ib]->gpu();
+        float *image_based_bbox_output = bbox_output_device + ib * (bbox_head_dims_[1] * bbox_head_dims_[2]);
+        checkRuntime(cudaMemsetAsync(boxarray_device, 0, sizeof(int), stream_));
+        decode_kernel_invoker_v11(image_based_bbox_output,
+                                  bbox_head_dims_[1],
+                                  num_classes_,
+                                  bbox_head_dims_[2],
+                                  confidence_threshold_,
+                                  nms_threshold_,
+                                  affine_matrix_device,
+                                  boxarray_device,
+                                  box_count,
+                                  max_image_boxes_,
+                                  num_box_element_,
+                                  0,
+                                  0,
+                                  ib,
+                                  stream_);
+        fast_nms_kernel_invoker(boxarray_device,
+                                box_count,
+                                max_image_boxes_,
+                                nms_threshold_,
+                                num_box_element_,
+                                stream_);
+        checkRuntime(cudaMemcpyAsync(image_box_counts_[ib]->cpu(),
+                                     image_box_counts_[ib]->gpu(),
+                                     image_box_counts_[ib]->gpu_bytes(),
+                                     cudaMemcpyDeviceToHost,
+                                     stream_));
+    }
+    checkRuntime(cudaMemcpyAsync(output_boxarray_.cpu(),
+                                 output_boxarray_.gpu(),
+                                 output_boxarray_.gpu_bytes(),
+                                 cudaMemcpyDeviceToHost,
+                                 stream_));
+    checkRuntime(cudaStreamSynchronize(stream_));
+    std::vector<object::DetectionResultArray> arrout(num_image);
+
+    for (int ib = 0; ib < num_image; ++ib)
+    {
+        float *parray                        = output_boxarray_.cpu() + ib * (max_image_boxes_ * num_box_element_);
+        int count                            = min(max_image_boxes_, *(image_box_counts_[ib]->cpu()));
+        object::DetectionResultArray &output = arrout[ib];
+        for (int i = 0; i < count; ++i)
+        {
+            float *pbox  = parray + i * num_box_element_;
+            int label    = pbox[5];
+            int keepflag = pbox[6];
+            if (keepflag == 1)
+            {
+                std::string name = class_names_[label];
+                object::Box result_object_box(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], label, name);
+                output.emplace_back(result_object_box);
+            }
+        }
+    }
+    return arrout;
+}
+
+static InferBase *loadraw(const std::string &engine_file,
+                          const std::vector<std::string> &names,
+                          float confidence_threshold,
+                          float nms_threshold,
+                          int gpu_id,
+                          int max_batch_size)
+{
+    Yolo11ModelImpl *impl = new Yolo11ModelImpl();
+    if (!impl->load(engine_file, names, confidence_threshold, nms_threshold, gpu_id, max_batch_size))
+    {
+        delete impl;
+        impl = nullptr;
+    }
+    return impl;
+}
+
+std::shared_ptr<InferBase> load_yolo_11(const std::string &engine_file,
+                                        const std::vector<std::string> &names,
+                                        int gpu_id,
+                                        float confidence_threshold,
+                                        float nms_threshold,
+                                        int max_batch_size)
+{
+    try
+    {
+        checkRuntime(cudaSetDevice(gpu_id));
+        return std::shared_ptr<Yolo11ModelImpl>((
+            Yolo11ModelImpl *)loadraw(engine_file, names, confidence_threshold, nms_threshold, gpu_id, max_batch_size));
+    }
+    catch (const std::exception &ex)
+    {
+        return nullptr;
+    }
+}
+
+} // end namespace yolo

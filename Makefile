@@ -1,5 +1,5 @@
 cc        := g++
-name      := trtsahiyolo.so
+name      := trtsahi.so
 workdir   := workspace
 srcdir    := src
 objdir    := objs
@@ -10,8 +10,8 @@ nvcc      := $(cuda_home)/bin/nvcc -ccbin=$(cc)
 
 
 project_include_path := src
-opencv_include_path  := /usr/include/opencv4/
-trt_include_path     := /usr/include/x86_64-linux-gnu/
+opencv_include_path  := /workspace/compile/__install/opencv490/include/opencv4
+trt_include_path     := /opt/nvidia/TensorRT-10.9.0.34/include
 cuda_include_path    := $(cuda_home)/include
 ffmpeg_include_path  := 
 
@@ -25,8 +25,8 @@ include_paths        := $(project_include_path) \
 						$(python_include_path)
 
 
-opencv_library_path  := /workspace/__install/opencv490/lib
-trt_library_path     := /usr/lib/x86_64-linux-gnu/
+opencv_library_path  := /workspace/compile/__install/opencv490/lib
+trt_library_path     := /opt/nvidia/TensorRT-10.9.0.34/lib
 cuda_library_path    := $(cuda_home)/lib64/
 python_library_path  := 
 
@@ -117,7 +117,7 @@ $(objdir)/%.cpp.o : $(srcdir)/%.cpp
 $(objdir)/%.cu.o : $(srcdir)/%.cu
 	@echo Compile CUDA $<
 	@mkdir -p $(dir $@)
-	@$(nvcc) $(CXXFLAGS) -c $< -o $@ $(cu_compile_flags)
+	@$(nvcc) $(CXXFLAGS) -diag-suppress 611 -c $< -o $@ $(cu_compile_flags)
 
 $(objdir)/%.cpp.mk : $(srcdir)/%.cpp
 	@echo Compile depends C++ $<
