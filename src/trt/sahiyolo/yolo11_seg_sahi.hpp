@@ -70,7 +70,8 @@ class Yolo11SegSahiModelImpl : public InferBase
     int device_id_   = 0;
 
     int num_box_element_ = 9;
-    int max_image_boxes_ = 1024 * max_batch_size_;
+    int single_image_max_boxes_ = 1024;
+    int max_image_boxes_ = single_image_max_boxes_;
 
   public:
     virtual InferResult forwards(const std::vector<cv::Mat> &inputs, void *stream = nullptr);

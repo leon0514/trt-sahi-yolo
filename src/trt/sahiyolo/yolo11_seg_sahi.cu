@@ -238,7 +238,7 @@ InferResult Yolo11SegSahiModelImpl::forwards(const std::vector<cv::Mat> &inputs,
     }
 
     int num_image          = slice_->slice_num_h_ * slice_->slice_num_v_;
-    this->max_image_boxes_ = max_image_boxes_ * num_image;
+    this->max_image_boxes_ = single_image_max_boxes_ * num_image;
     auto input_dims        = trt_->static_dims(0);
     int infer_batch_size   = input_dims[0];
     if (infer_batch_size  != num_image)
