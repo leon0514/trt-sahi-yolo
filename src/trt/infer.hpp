@@ -93,10 +93,9 @@ class InferBase
 {
   public:
     virtual InferResult forwards(const std::vector<cv::Mat> &inputs, void *stream = nullptr) = 0;
-    // virtual int get_gpu_id() = 0;
-    virtual void set_nms_threshold(float nms_threshold) {}
 
-    virtual void set_conf_threshold(float conf_threshold) {}
+    virtual ~InferBase() = default;
+
 };
 
 std::shared_ptr<InferBase> load(const std::string &model_path,

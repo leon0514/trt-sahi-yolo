@@ -53,74 +53,12 @@ bool Yolo11SegSahiModelImpl::load(const std::string &engine_file,
 
 void Yolo11SegSahiModelImpl::adjust_memory(int batch_size)
 {
-    size_t input_numel = network_input_width_ * network_input_height_ * 3;
-    input_buffer_.gpu(batch_size * input_numel);
-    bbox_predict_.gpu(batch_size * bbox_head_dims_[1] * bbox_head_dims_[2]);
-    segment_predict_.gpu(batch_size * segment_head_dims_[1] * segment_head_dims_[2] * segment_head_dims_[3]);
-    output_boxarray_.gpu(max_image_boxes_ * num_box_element_);
-    output_boxarray_.cpu(max_image_boxes_ * num_box_element_);
-
+    YoloSahiModelImpl::adjust_memory(batch_size);
     mask_affine_matrix_.gpu(6);
     mask_affine_matrix_.cpu(6);
-
-    affine_matrix_.gpu(6);
-    affine_matrix_.cpu(6);
-
-    inverse_affine_matrix_.gpu(6);
-    inverse_affine_matrix_.cpu(6);
-
-    image_box_count_.gpu(1);
-    image_box_count_.cpu(1);
+    segment_predict_.gpu(batch_size * segment_head_dims_[1] * segment_head_dims_[2] * segment_head_dims_[3]);
 }
 
-void Yolo11SegSahiModelImpl::preprocess(int ibatch, void *stream)
-{
-    size_t input_numel  = network_input_width_ * network_input_height_ * 3;
-    float *input_device = input_buffer_.gpu() + ibatch * input_numel;
-    size_t size_image   = slice_->slice_width_ * slice_->slice_height_ * 3;
-
-    float *affine_matrix_device = affine_matrix_.gpu();
-    uint8_t *image_device       = slice_->output_images_.gpu() + ibatch * size_image;
-
-    // speed up
-    cudaStream_t stream_ = (cudaStream_t)stream;
-
-    warp_affine_bilinear_and_normalize_plane(image_device,
-                                             slice_->slice_width_ * 3,
-                                             slice_->slice_width_,
-                                             slice_->slice_height_,
-                                             input_device,
-                                             network_input_width_,
-                                             network_input_height_,
-                                             affine_matrix_device,
-                                             114,
-                                             normalize_,
-                                             stream_);
-} // namespace sahiyolo
-
-void Yolo11SegSahiModelImpl::compute_affine_matrix(affine::LetterBoxMatrix &affine, void *stream)
-{
-    affine.compute(std::make_tuple(slice_->slice_width_, slice_->slice_height_),
-                   std::make_tuple(network_input_width_, network_input_height_));
-
-    float *affine_matrix_device = affine_matrix_.gpu();
-    float *affine_matrix_host   = affine_matrix_.cpu();
-
-    float *inverse_affine_matrix_device = inverse_affine_matrix_.gpu();
-    float *inverse_affine_matrix_host   = inverse_affine_matrix_.cpu();
-
-    cudaStream_t stream_ = (cudaStream_t)stream;
-    memcpy(affine_matrix_host, affine.d2i, sizeof(affine.d2i));
-    checkRuntime(
-        cudaMemcpyAsync(affine_matrix_device, affine_matrix_host, sizeof(affine.d2i), cudaMemcpyHostToDevice, stream_));
-
-    memcpy(inverse_affine_matrix_host, affine.i2d, sizeof(affine.i2d));
-    checkRuntime(cudaMemcpyAsync(inverse_affine_matrix_device,
-                                 inverse_affine_matrix_host,
-                                 sizeof(affine.i2d),
-                                 cudaMemcpyHostToDevice,
-                                 stream_));
-}
 
 std::shared_ptr<object::SegmentMap> Yolo11SegSahiModelImpl::decode_segment(int ib, float *pbox, void *stream)
 {

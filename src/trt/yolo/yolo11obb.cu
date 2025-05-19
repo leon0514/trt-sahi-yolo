@@ -21,10 +21,11 @@ bool Yolo11ObbModelImpl::load(const std::string &engine_file,
 
     trt_->print();
 
+    this->num_box_element_      = 10;
     this->confidence_threshold_ = confidence_threshold;
     this->nms_threshold_        = nms_threshold;
     this->class_names_          = names;
-    this->max_batch_size        = max_batch_size;
+    this->max_batch_size_       = max_batch_size;
 
     auto input_dim  = trt_->static_dims(0);
     bbox_head_dims_ = trt_->static_dims(1);
@@ -107,7 +108,7 @@ InferResult Yolo11ObbModelImpl::forwards(const std::vector<cv::Mat> &inputs, voi
 {
     // 推理图片数量
     int num_image = inputs.size();
-    assert(num_image <= max_batch_size);
+    assert(num_image <= max_batch_size_);
     // 输入的维度 batch x 3 x width x height
     auto input_dims      = trt_->static_dims(0);
     int infer_batch_size = input_dims[0];
