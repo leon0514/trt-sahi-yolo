@@ -20,6 +20,9 @@ class Yolo11SegModelImpl : public YoloModelImpl
     std::vector<int> segment_head_dims_;
 
   public:
+  void adjust_memory(int batch_size);
+
+  public:
     virtual InferResult forwards(const std::vector<cv::Mat> &inputs, void *stream = nullptr);
     virtual bool load(const std::string &engine_file,
         const std::vector<std::string> &names,
@@ -27,15 +30,12 @@ class Yolo11SegModelImpl : public YoloModelImpl
         float nms_threshold,
         int gpu_id,
         int max_batch_size) override;
-
-  protected:
-    virtual void preprocess(int ibatch,
+        
+    void preprocess(int ibatch,
         const tensor::Image &image,
         std::shared_ptr<tensor::Memory<unsigned char>> preprocess_buffer,
         affine::LetterBoxMatrix &affine,
-        void *stream = nullptr) override;
-
-    virtual void adjust_memory(int batch_size) override;
+        void *stream = nullptr);
   private:
     std::shared_ptr<object::SegmentMap> decode_segment(int ib, float *pbox, void *stream);
 };

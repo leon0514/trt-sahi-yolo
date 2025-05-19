@@ -18,15 +18,6 @@ class Yolo11ObbModelImpl : public YoloModelImpl
         float nms_threshold,
         int gpu_id,
         int max_batch_size) override;
-    
-    virtual void preprocess(int ibatch,
-        const tensor::Image &image,
-        std::shared_ptr<tensor::Memory<unsigned char>> preprocess_buffer,
-        affine::LetterBoxMatrix &affine,
-        void *stream = nullptr) override;
-
-    virtual void adjust_memory(int batch_size) override;
-
 };
 
 std::shared_ptr<InferBase> load_yolo_11_obb(const std::string &engine_file,
