@@ -1,7 +1,7 @@
 #ifndef YOLO11_HPP__
 #define YOLO11_HPP__
 
-#include "trt/yolo.hpp"
+#include "trt/yolo/yolo.hpp"
 
 
 

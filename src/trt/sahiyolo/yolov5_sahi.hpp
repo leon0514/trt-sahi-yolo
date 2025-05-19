@@ -1,7 +1,7 @@
 #ifndef YOLOV5_SAHI_HPP
 #define YOLOV5_SAHI_HPP
 
-#include "trt/sahiyolo.hpp"
+#include "trt/sahiyolo/sahiyolo.hpp"
 
 namespace sahiyolo
 {

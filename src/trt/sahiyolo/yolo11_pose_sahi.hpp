@@ -1,7 +1,7 @@
 #ifndef YOLO11_POSE_SAHI_HPP
 #define YOLO11_POSE_SAHI_HPP
 
-#include "trt/sahiyolo.hpp"
+#include "trt/sahiyolo/sahiyolo.hpp"
 
 namespace sahiyolo
 {

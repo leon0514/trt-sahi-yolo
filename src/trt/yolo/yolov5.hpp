@@ -1,7 +1,7 @@
 #ifndef YOLOV5_HPP__
 #define YOLOV5_HPP__
 
-#include "trt/yolo.hpp"
+#include "trt/yolo/yolo.hpp"
 
 namespace yolo
 {

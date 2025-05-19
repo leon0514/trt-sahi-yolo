@@ -1,7 +1,7 @@
 #ifndef YOLO11POSE_HPP__
 #define YOLO11POSE_HPP__
 
-#include "trt/yolo.hpp"
+#include "trt/yolo/yolo.hpp"
 
 namespace yolo
 {
