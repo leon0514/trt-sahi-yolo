@@ -24,6 +24,10 @@ namespace sahiyolo
 
 class YoloSahiModelImpl : public InferBase
 {
+  public:
+    YoloSahiModelImpl() = default;
+    virtual ~YoloSahiModelImpl() = default;
+    
   protected:
     // for sahi crop image
     std::shared_ptr<slice::SliceImage> slice_;

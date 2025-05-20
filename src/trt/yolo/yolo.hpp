@@ -23,6 +23,10 @@ namespace yolo
 
 class YoloModelImpl : public InferBase
 {
+ public:
+    YoloModelImpl() = default;
+    virtual ~YoloModelImpl() = default;
+
   protected:
     std::vector<std::shared_ptr<tensor::Memory<unsigned char>>> preprocess_buffers_;
     tensor::Memory<float> input_buffer_, bbox_predict_, output_boxarray_;
