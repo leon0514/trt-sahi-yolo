@@ -23,7 +23,7 @@ static std::vector<std::string> classes_names = {
 
 void run_yolo11obb()
 {
-    std::shared_ptr<InferBase> model_ = load("models/yolo11m-obb.transd.engine",
+    std::shared_ptr<InferBase> model_ = load("models/engine/yolo11m-obb.transd.engine",
         ModelType::YOLO11OBB,
         classes_names,
         0,
@@ -59,7 +59,7 @@ void run_yolo11obb()
 
 void run_yolo11obb_sahi()
 {
-    std::shared_ptr<InferBase> model_ = load("models/yolo11m-obb.transd.engine",
+    std::shared_ptr<InferBase> model_ = load("models/engine/yolo11m-obb.transd.engine",
         ModelType::YOLO11OBBSAHI,
         classes_names,
         0,

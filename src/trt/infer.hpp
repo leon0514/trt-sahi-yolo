@@ -17,6 +17,8 @@ enum class ModelType : int
     YOLO11SEGSAHI  = 7,
     YOLO11OBB      = 8,
     YOLO11OBBSAHI  = 9,
+    DFINE          = 10,
+    DFINESAHI      = 11
 };
 
 // 为枚举类添加字符串转换功能
@@ -47,6 +49,10 @@ inline std::string to_string(ModelType type)
         return "YOLO11OBB";
     case ModelType::YOLO11OBBSAHI:
         return "YOLO11OBBSAHI";
+    case ModelType::DFINE:
+        return "DFINE";
+    case ModelType::DFINESAHI:
+        return "DFINESAHI";
     default:
         return "UNKNOWN";
     }

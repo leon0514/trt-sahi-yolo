@@ -92,6 +92,20 @@ __global__ void decode_single_mask_kernel(int left,
                                           int out_width,
                                           int out_height);
 
+__global__ void decode_dfine_kernel(
+    int64_t* labels, 
+    float* scores, 
+    float* boxes, 
+    int num_bboxes,
+    float confidence_threshold, 
+    int *box_count, 
+    int start_x,
+    int start_y, 
+    float* result, 
+    int max_image_boxes, 
+    int num_box_element
+    );
+
 } // namespace cuda
 
 #endif

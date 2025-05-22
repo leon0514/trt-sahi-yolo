@@ -55,6 +55,12 @@
    <img src="https://github.com/leon0514/trt-sahi-yolo/blob/main/assert/yolo11obbsahi.jpg?raw=true" width="45%"/>
 </div>
 
+### D-FINE 检测
+<div align="center">
+   <img src="https://github.com/leon0514/trt-sahi-yolo/blob/main/assert/dfine.jpg?raw=true" width="45%"/>
+   <img src="https://github.com/leon0514/trt-sahi-yolo/blob/main/assert/dfinesahi.jpg?raw=true" width="45%"/>
+</div>
+
 ## TensorRT8 API支持
 在Makefile中通过 **TRT_VERSION** 来控制编译哪个版本的 **TensorRT** 封装文件
 
@@ -101,10 +107,20 @@ def yolov5():
 - tensorrt
 - python（如果需要python使用）
 
+## 支持的模型
+| 支持的模型             |
+|-----------------------|
+| YOLO11                |
+| YOLO11-Pose           |
+| YOLO11-SEG            |
+| YOLO11-Obb            |
+| YOLOv8                |
+| YOLOv5                |
+| D-FINE                |
 
 ## TODO
 - [x] **NMS 实现**：完成所有子图的 NMS 处理逻辑，去除冗余框。已完成
 - [x] **TensorRT8支持**：完成使用 **TensorRT8** 和 **TensorRT10** API
 - [x] **Python支持**：使用 **Pybind11** 封装，使用 **Pyton** 调用
-- [ ] **更多模型支持**：添加对其他 YOLO 模型版本的支持。目前支持 **YOLO11/YOLO11-Pose/YOLO11-SEG/YOLO11-Obb/YOLOv8/YOLOv5**
+- [ ] **更多模型支持**：添加对其他模型的支持。
 

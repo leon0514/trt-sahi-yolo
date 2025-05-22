@@ -6,7 +6,7 @@
 #include "common/image.hpp"
 #include "common/memory.hpp"
 #include "common/norm.hpp"
-#include "trt/sahiyolo/slice/slice.hpp"
+#include "trt/slice/slice.hpp"
 #include "kernels/kernel_warp.hpp"
 #include "trt/infer.hpp"
 #include <memory>
@@ -80,27 +80,27 @@ class YoloSahiModelImpl : public InferBase
     virtual void preprocess(int ibatch,
         void *stream = nullptr)
     {
-      size_t input_numel  = network_input_width_ * network_input_height_ * 3;
-      float *input_device = input_buffer_.gpu() + ibatch * input_numel;
-      size_t size_image   = slice_->slice_width_ * slice_->slice_height_ * 3;
+        size_t input_numel  = network_input_width_ * network_input_height_ * 3;
+        float *input_device = input_buffer_.gpu() + ibatch * input_numel;
+        size_t size_image   = slice_->slice_width_ * slice_->slice_height_ * 3;
 
-      float *affine_matrix_device = affine_matrix_.gpu();
-      uint8_t *image_device       = slice_->output_images_.gpu() + ibatch * size_image;
+        float *affine_matrix_device = affine_matrix_.gpu();
+        uint8_t *image_device       = slice_->output_images_.gpu() + ibatch * size_image;
 
-      // speed up
-      cudaStream_t stream_ = (cudaStream_t)stream;
+        // speed up
+        cudaStream_t stream_ = (cudaStream_t)stream;
 
-      warp_affine_bilinear_and_normalize_plane(image_device,
-                                              slice_->slice_width_ * 3,
-                                              slice_->slice_width_,
-                                              slice_->slice_height_,
-                                              input_device,
-                                              network_input_width_,
-                                              network_input_height_,
-                                              affine_matrix_device,
-                                              114,
-                                              normalize_,
-                                              stream_);
+        warp_affine_bilinear_and_normalize_plane(image_device,
+                                                slice_->slice_width_ * 3,
+                                                slice_->slice_width_,
+                                                slice_->slice_height_,
+                                                input_device,
+                                                network_input_width_,
+                                                network_input_height_,
+                                                affine_matrix_device,
+                                                114,
+                                                normalize_,
+                                                stream_);
 
     }
 
@@ -125,26 +125,26 @@ class YoloSahiModelImpl : public InferBase
 
     void compute_affine_matrix(affine::LetterBoxMatrix &affine, void *stream = nullptr)
     {
-      affine.compute(std::make_tuple(slice_->slice_width_, slice_->slice_height_),
-      std::make_tuple(network_input_width_, network_input_height_));
+        affine.compute(std::make_tuple(slice_->slice_width_, slice_->slice_height_),
+        std::make_tuple(network_input_width_, network_input_height_));
 
-      float *affine_matrix_device = affine_matrix_.gpu();
-      float *affine_matrix_host   = affine_matrix_.cpu();
+        float *affine_matrix_device = affine_matrix_.gpu();
+        float *affine_matrix_host   = affine_matrix_.cpu();
 
-      float *inverse_affine_matrix_device = inverse_affine_matrix_.gpu();
-      float *inverse_affine_matrix_host   = inverse_affine_matrix_.cpu();
+        float *inverse_affine_matrix_device = inverse_affine_matrix_.gpu();
+        float *inverse_affine_matrix_host   = inverse_affine_matrix_.cpu();
 
-      cudaStream_t stream_ = (cudaStream_t)stream;
-      memcpy(affine_matrix_host, affine.d2i, sizeof(affine.d2i));
-      checkRuntime(
-      cudaMemcpyAsync(affine_matrix_device, affine_matrix_host, sizeof(affine.d2i), cudaMemcpyHostToDevice, stream_));
+        cudaStream_t stream_ = (cudaStream_t)stream;
+        memcpy(affine_matrix_host, affine.d2i, sizeof(affine.d2i));
+        checkRuntime(
+        cudaMemcpyAsync(affine_matrix_device, affine_matrix_host, sizeof(affine.d2i), cudaMemcpyHostToDevice, stream_));
 
-      memcpy(inverse_affine_matrix_host, affine.i2d, sizeof(affine.i2d));
-      checkRuntime(cudaMemcpyAsync(inverse_affine_matrix_device,
-                          inverse_affine_matrix_host,
-                          sizeof(affine.i2d),
-                          cudaMemcpyHostToDevice,
-                          stream_));
+        memcpy(inverse_affine_matrix_host, affine.i2d, sizeof(affine.i2d));
+        checkRuntime(cudaMemcpyAsync(inverse_affine_matrix_device,
+                            inverse_affine_matrix_host,
+                            sizeof(affine.i2d),
+                            cudaMemcpyHostToDevice,
+                            stream_));
     }
 
 

@@ -437,6 +437,53 @@ fast_nms_obb_kernel(float *bboxes, int *box_count, int max_image_boxes, float th
     }
 }
 
+__global__ void decode_dfine_kernel(
+    int64_t* labels, 
+    float* scores, 
+    float* boxes, 
+    int num_bboxes, 
+    float confidence_threshold, 
+    int *box_count, 
+    int start_x,
+    int start_y,
+    float* result, 
+    int max_image_boxes, 
+    int num_box_element
+)
+{
+    int position = blockDim.x * blockIdx.x + threadIdx.x;
+    if (position >= num_bboxes)
+        return;
+
+    int label = (int)*(labels + position);
+    float confidence = *(scores + position);
+
+    float *box = boxes + position * 4;
+
+    if (confidence < confidence_threshold)
+        return;
+    int index = atomicAdd(box_count, 1);
+    if (index >= max_image_boxes)
+        return;
+
+    float *pout_item = result + num_box_element * index;
+
+    // *pout_item++     = box[0];
+    // *pout_item++     = box[1];
+    // *pout_item++     = box[2];
+    // *pout_item++     = box[3];
+    
+    *pout_item++     = box[0] + start_x;
+    *pout_item++     = box[1] + start_y;
+    *pout_item++     = box[2] + start_x;
+    *pout_item++     = box[3] + start_y;
+    *pout_item++     = confidence;
+    *pout_item++     = label;
+    *pout_item++     = 1; // 1 = keep, 0 = ignore
+    *pout_item++     = position;
+    *pout_item++     = 0; // batch_index
+}
+
 __global__ void decode_single_mask_kernel(int left,
                                           int top,
                                           float *mask_weights,

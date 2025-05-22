@@ -1,6 +1,6 @@
 #include "common/check.hpp"
 #include "kernels/kernel_warp.hpp"
-#include "trt/sahiyolo/slice/slice.hpp"
+#include "trt/slice/slice.hpp"
 #include <cmath>
 
 namespace slice
@@ -229,7 +229,7 @@ void SliceImage::slice(const tensor::Image &image,
                 slice_height,
                 slice_num_h_,
                 slice_num_v_,
-                stream);
+                stream_);
 
     // checkRuntime(cudaStreamSynchronize(stream_));
 

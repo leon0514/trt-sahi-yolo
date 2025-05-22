@@ -313,13 +313,12 @@ void slice_plane(const uint8_t *image,
                  const int slice_height,
                  const int slice_num_h,
                  const int slice_num_v,
-                 void *stream)
+                 cudaStream_t stream)
 {
     int slice_total      = slice_num_h * slice_num_v;
-    cudaStream_t stream_ = (cudaStream_t)stream;
     dim3 block(32, 32);
     dim3 grid((slice_width + block.x - 1) / block.x, (slice_height + block.y - 1) / block.y, slice_total);
-    checkKernel(cuda::slice_kernel<<<grid, block, 0, stream_>>>(image,
+    checkKernel(cuda::slice_kernel<<<grid, block, 0, stream>>>(image,
                                                                 outs,
                                                                 width,
                                                                 height,
@@ -328,4 +327,37 @@ void slice_plane(const uint8_t *image,
                                                                 slice_num_h,
                                                                 slice_num_v,
                                                                 slice_start_point));
+}
+
+
+void decode_dfine_plan(
+    int64_t* labels, 
+    float* scores, 
+    float* boxes, 
+    int num_bboxes,
+    float confidence_threshold, 
+    int *box_count, 
+    int start_x,
+    int start_y,
+    float* result, 
+    int max_image_boxes, 
+    int num_box_element,
+    cudaStream_t stream
+    )
+{
+    auto grid  = grid_dims(num_bboxes);
+    auto block = block_dims(num_bboxes);
+    checkKernel(cuda::decode_dfine_kernel<<<grid, block, 0, stream>>>(
+        labels,
+        scores,
+        boxes,
+        num_bboxes,
+        confidence_threshold,
+        box_count,
+        start_x,
+        start_y,
+        result,
+        max_image_boxes,
+        num_box_element));
+
 }

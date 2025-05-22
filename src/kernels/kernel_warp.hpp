@@ -148,6 +148,21 @@ void slice_plane(const uint8_t *image,
                  const int slice_height,
                  const int slice_num_h,
                  const int slice_num_v,
-                 void *stream = nullptr);
+                 cudaStream_t stream);
 
+
+void decode_dfine_plan(
+    int64_t* labels, 
+    float* scores, 
+    float* boxes, 
+    int num_bboxes, 
+    float confidence_threshold, 
+    int *box_count, 
+    int start_x,
+    int start_y, 
+    float* result, 
+    int max_image_boxes, 
+    int num_box_element,
+    cudaStream_t stream
+    );
 #endif

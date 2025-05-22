@@ -4,6 +4,8 @@
 #include "trt/yolo/yolo11pose.hpp"
 #include "trt/yolo/yolo11seg.hpp"
 #include "trt/yolo/yolov5.hpp"
+#include "trt/dfine/dfine.hpp"
+#include "trt/dfinesahi/dfinesahi.hpp"
 
 #include "trt/sahiyolo/yolo11_pose_sahi.hpp"
 #include "trt/sahiyolo/yolo11_sahi.hpp"
@@ -46,6 +48,10 @@ std::shared_ptr<InferBase> load(const std::string &model_path,
     case ModelType::YOLO11OBB:
         instance =
             yolo::load_yolo_11_obb(model_path, names, gpu_id, confidence_threshold, nms_threshold, max_batch_size);
+        break;
+    case ModelType::DFINE:
+        instance =
+            dfine::load_dfine(model_path, names, gpu_id, confidence_threshold, nms_threshold, max_batch_size);
         break;
     case ModelType::YOLOV5SAHI:
         instance = sahiyolo::load_yolo_v5_sahi(model_path,
@@ -111,6 +117,19 @@ std::shared_ptr<InferBase> load(const std::string &model_path,
                                                    slice_height,
                                                    slice_horizontal_ratio,
                                                    slice_vertical_ratio);
+        break;
+    case ModelType::DFINESAHI:
+        instance = dfinesahi::load_dfine_sahi(model_path,
+                                            names, 
+                                            gpu_id, 
+                                            confidence_threshold, 
+                                            nms_threshold, 
+                                            max_batch_size,
+                                            auto_slice,
+                                            slice_width,
+                                            slice_height,
+                                            slice_horizontal_ratio,
+                                            slice_vertical_ratio);
         break;
     default:
         instance = nullptr;

@@ -14,15 +14,15 @@ static std::vector<std::string> classes_names = {
     "hair drier", "toothbrush"
 };
 
-void run_yolo11()
+void run_dfine()
 {
-    std::shared_ptr<InferBase> model_ = load("models/engine/yolo11l.transd.engine",
-        ModelType::YOLO11,
+    std::shared_ptr<InferBase> model_ = load("models/engine/dfine_l_obj2coco.engine",
+        ModelType::DFINE,
         classes_names,
         0,
         0.5f,
         0.45f,
-        1,
+        16,
         false,
         0,
         0,
@@ -42,7 +42,7 @@ void run_yolo11()
                 {
                     printf("Batch %d: size : %d\n", i, result[i].size());
                     osd_detection(images[i], result[i]);
-                    cv::imwrite("result/yolo11l.jpg", images[i]);
+                    cv::imwrite("result/dfine.jpg", images[i]);
                 }
                 
             }
@@ -50,20 +50,20 @@ void run_yolo11()
         det);
 }
 
-void run_yolo11_sahi()
+void run_dfine_sahi()
 {
-    std::shared_ptr<InferBase> model_ = load("models/engine/yolo11l.transd.engine",
-        ModelType::YOLO11SAHI,
+    std::shared_ptr<InferBase> model_ = load("models/engine/dfine_l_obj2coco.engine",
+        ModelType::DFINESAHI,
         classes_names,
         0,
         0.5f,
         0.45f,
-        32,
+        16,
         true,
-        640,
-        640,
-        0.3,
-        0.3);
+        0,
+        0,
+        0.0,
+        0.0);
     cv::Mat image = cv::imread("inference/persons.jpg");
     std::vector<cv::Mat> images = {image};
     auto det = model_->forwards(images);
@@ -78,9 +78,9 @@ void run_yolo11_sahi()
                 {
                     printf("Batch %d: size : %d\n", i, result[i].size());
                     osd_detection(images[i], result[i]);
-                    cv::imwrite("result/yolo11lsahi.jpg", images[i]);
+                    cv::imwrite("result/dfinesahi.jpg", images[i]);
                 }
-
+                
             }
         },
         det);
