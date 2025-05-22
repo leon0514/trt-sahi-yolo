@@ -117,15 +117,15 @@ def yolov5():
 - python（如果需要python使用）
 
 ## 支持的模型
-| 支持的模型             |
-|-----------------------|
-| YOLO11                |
-| YOLO11-Pose           |
-| YOLO11-SEG            |
-| YOLO11-Obb            |
-| YOLOv8                |
-| YOLOv5                |
-| D-FINE                |
+| 模型名称              |  是否支持sahi | 
+|-----------------------|--------------|
+| YOLO11                |  是           |
+| YOLO11-Pose           |  是           |
+| YOLO11-SEG            |  是           |
+| YOLO11-Obb            |  是           |
+| YOLOv8                |  是           |
+| YOLOv5                |  是           |
+| D-FINE                |  是           |
 
 ## TODO
 - [x] **NMS 实现**：完成所有子图的 NMS 处理逻辑，去除冗余框。已完成
