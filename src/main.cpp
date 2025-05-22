@@ -12,7 +12,6 @@ void run_yolo11();
 void run_yolo11_sahi();
 
 void run_dfine();
-void run_dfine_sahi();
 
 
 int main()
@@ -28,15 +27,14 @@ int main()
     // run_yolo11();
     // run_yolo11_sahi();
     run_dfine();
-    run_dfine_sahi();
     return 0;
 }
 
 /*
 
-/opt/nvidia/TensorRT-10.9.0.34/bin/trtexec  --onnx=models/onnx/yolo11l.transd.onnx \
-    --minShapes=images:1x3x640x640 \
-    --maxShapes=images:16x3x640x640 \
-    --optShapes=images:1x3x640x640 \
-    --saveEngine=models/engine/yolo11l.transd.engine --fp16
+/opt/nvidia/TensorRT-10.9.0.34/bin/trtexec  --onnx=models/onnx/dfine_l_obj2coco.onnx \
+    --minShapes=images:1x3x640x640,orig_target_sizes:1x2\
+    --maxShapes=images:16x3x640x640,orig_target_sizes:16x2 \
+    --optShapes=images:1x3x640x640,orig_target_sizes:1x2 \
+    --saveEngine=models/engine/dfine_l_obj2coco.engine --fp16
 */

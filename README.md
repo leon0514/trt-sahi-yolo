@@ -61,6 +61,15 @@
    <img src="https://github.com/leon0514/trt-sahi-yolo/blob/main/assert/dfinesahi.jpg?raw=true" width="45%"/>
 </div>
 
+#### D-FINE 导出engin
+```shell
+trtexec  --onnx=models/onnx/dfine_l_obj2coco.onnx \
+--minShapes=images:1x3x640x640,orig_target_sizes:1x2 \
+--maxShapes=images:16x3x640x640,orig_target_sizes:16x2 \
+--optShapes=images:1x3x640x640,orig_target_sizes:1x2 \
+--saveEngine=models/engine/dfine_l_obj2coco.engine --fp16
+```
+
 ## TensorRT8 API支持
 在Makefile中通过 **TRT_VERSION** 来控制编译哪个版本的 **TensorRT** 封装文件
 
