@@ -132,14 +132,14 @@ visuals = dict(
     ]
 )
 
-source_image = 'ultralytics/assets/bus.jpg'
-target_image = 'ultralytics/assets/zidane.jpg'
+source_image1 = 'ultralytics/assets/bus.jpg'
+source_image2 = 'ultralytics/assets/zidane.jpg'
 target_image1 = 'ultralytics/assets/persons.jpg'
 
-model.predict([source_image, target_image] , prompts=visuals, predictor=YOLOEVPSegPredictor, return_vpe=True)
+model.predict([source_image1, source_image2] , prompts=visuals, predictor=YOLOEVPSegPredictor, return_vpe=True)
 model.set_classes(["person", "glasses"], torch.nn.functional.normalize(model.predictor.vpe.mean(dim=0, keepdim=True), dim=-1, p=2))
 model.predictor = None  # remove VPPredictor
-model.predict(target_image, save=True)
+model.predict(target_image1, save=True)
 
 onnx_path = model.export(format='onnx', opset=17, simplify=True, device="cpu", dynamic=True, nms=False)
 # # coreml_path = model.export(format='coreml', half=True, nms=False, device="0")
