@@ -70,6 +70,92 @@ trtexec  --onnx=models/onnx/dfine_l_obj2coco.onnx \
 --saveEngine=models/engine/dfine_l_obj2coco.engine --fp16
 ```
 
+### YOLOE
+#### 根据文本提示导出onnx
+这里导出的是识别人的onnx模型，导出后可以按照YOLOV8或者YOLO11的segmentation模型使用
+```python
+import os
+from ultralytics import YOLOE
+from pathlib import Path
+from ultralytics.utils import yaml_load
+
+model_name = "pretrain/yoloe-v8l-seg.pt"
+file_name = "ultralytics/cfg/datasets/custom.yaml"
+
+model = YOLOE(model_name).cuda()
+model.eval()
+# Please replace names with yours
+data = yaml_load(file_name)
+names = [n.split('/')[0] for n in data["names"].values()]
+
+model.set_classes(names, model.get_text_pe(names))
+
+onnx_path = model.export(format='onnx', opset=17, simplify=True, device="0", dynamic=True, nms=False)
+# coreml_path = model.export(format='coreml', half=True, nms=False, device="0")
+
+save_name = f"{Path(model_name).stem}"
+os.rename(onnx_path, os.path.join(f'{save_name}.onnx'))
+```
+
+#### 根据bboxes提示导出onnx模型
+```python
+from ultralytics import YOLOE
+import numpy as np
+import torch
+from pathlib import Path
+import os
+from ultralytics.models.yolo.yoloe.predict_vp import YOLOEVPSegPredictor
+
+model_name = "pretrain/yoloe-v8l-seg.pt"
+model = YOLOE(model_name)
+
+# Handcrafted shape can also be passed, please refer to app.py
+# Multiple boxes or handcrafted shapes can also be passed as visual prompt in an image
+visuals = dict(
+    bboxes=[
+        np.array(
+            [
+                [221.52, 405.8, 344.98, 857.54],
+                [120, 425, 160, 445],
+            ],
+        ), 
+        np.array([
+            [150, 200, 1150, 700]
+        ])
+    ]
+    ,
+    cls=[
+        np.array(
+            [0, 1]
+        ), 
+        np.array([0])
+    ]
+)
+
+source_image = 'ultralytics/assets/bus.jpg'
+target_image = 'ultralytics/assets/zidane.jpg'
+target_image1 = 'ultralytics/assets/persons.jpg'
+
+model.predict([source_image, target_image] , prompts=visuals, predictor=YOLOEVPSegPredictor, return_vpe=True)
+model.set_classes(["person", "glasses"], torch.nn.functional.normalize(model.predictor.vpe.mean(dim=0, keepdim=True), dim=-1, p=2))
+model.predictor = None  # remove VPPredictor
+model.predict(target_image, save=True)
+
+onnx_path = model.export(format='onnx', opset=17, simplify=True, device="cpu", dynamic=True, nms=False)
+# # coreml_path = model.export(format='coreml', half=True, nms=False, device="0")
+
+save_name = f"{Path(model_name).stem}"
+os.rename(onnx_path, os.path.join(f'{save_name}.onnx'))
+```
+#### YOLOE 效果展示
+- 文本提示检测人的模型  
+如果将分辨率改为1280 x 1280效果会好很多
+<div align="center">
+   <img src="https://github.com/leon0514/trt-sahi-yolo/blob/main/assert/yoloe-visualprompt-seg.jpg?raw=true" width="45%"/>
+   <img src="https://github.com/leon0514/trt-sahi-yolo/blob/main/assert/yoloe-visualprompt-segsahi.jpg?raw=true" width="45%"/>
+</div>
+
+
 ## TensorRT8 API支持
 在Makefile中通过 **TRT_VERSION** 来控制编译哪个版本的 **TensorRT** 封装文件
 

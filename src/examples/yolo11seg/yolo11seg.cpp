@@ -16,7 +16,7 @@ static std::vector<std::string> classes_names = {
 
 void run_yolo11seg()
 {
-    std::shared_ptr<InferBase> model_ = load("models/yolo11l-seg.transd.engine",
+    std::shared_ptr<InferBase> model_ = load("models/engine/yoloe-v8l-seg.transd.engine",
         ModelType::YOLO11SEG,
         classes_names,
         0,
@@ -42,7 +42,7 @@ void run_yolo11seg()
                 {
                     printf("Batch %d: size : %d\n", i, result[i].size());
                     osd_segmentation(images[i], result[i]);
-                    cv::imwrite("result/yolo11seg.jpg", images[i]);
+                    cv::imwrite("result/yoloe-visualprompt-seg.jpg", images[i]);
                 }
                 
             }
@@ -52,7 +52,7 @@ void run_yolo11seg()
 
 void run_yolo11seg_sahi()
 {
-    std::shared_ptr<InferBase> model_ = load("models/yolo11l-seg.transd.engine",
+    std::shared_ptr<InferBase> model_ = load("models/engine/yoloe-v8l-seg.transd.engine",
         ModelType::YOLO11SEGSAHI,
         classes_names,
         0,
@@ -78,7 +78,7 @@ void run_yolo11seg_sahi()
                 {
                     printf("Batch %d: size : %d\n", i, result[i].size());
                     osd_segmentation(images[i], result[i]);
-                    cv::imwrite("result/yolo11segsahi.jpg", images[i]);
+                    cv::imwrite("result/yoloe-visualprompt-segsahi.jpg", images[i]);
                 }
 
             }
