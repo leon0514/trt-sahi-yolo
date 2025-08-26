@@ -33,10 +33,12 @@
 
 *.mp4
 
-workspace/
+workspace/*
 !workspace/*.py
 !workspace/*.pyi
+!workspace/inference/
 !workspace/inference/*.jpg
+
 *.engine
 *.onnx
 objs
