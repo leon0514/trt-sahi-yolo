@@ -1,147 +1,237 @@
 #ifndef POSITION_HPP__
 #define POSITION_HPP__
+
+#include <algorithm>
 #include <functional>
 #include <string>
 #include <tuple>
-#include <utility> // for std::forward
+#include <utility>
 #include <vector>
+#include <unordered_map>
+#include <unordered_set>
+#include <list>
 
 template <typename T>
-float computeIntersectionArea(const std::tuple<T, T, T, T> &box1, const std::tuple<T, T, T, T> &box2)
+struct Box
 {
-    T l1, t1, r1, b1;
-    T l2, t2, r2, b2;
-    std::tie(l1, t1, r1, b1) = box1;
-    std::tie(l2, t2, r2, b2) = box2;
+    T l, t, r, b;
+};
 
-    T intersectionWidth  = std::max(T(0), std::min(r1, r2) - std::max(l1, l2));
-    T intersectionHeight = std::max(T(0), std::min(b1, b2) - std::max(t1, t2));
-    return intersectionWidth * intersectionHeight;
+template <typename T>
+constexpr T area(const Box<T> &b)
+{
+    return std::max(T(0), b.r - b.l) * std::max(T(0), b.b - b.t);
 }
 
-template <typename T> float computeIoU(const std::tuple<T, T, T, T> &box1, const std::tuple<T, T, T, T> &box2)
+template <typename T>
+constexpr T intersectionArea(const Box<T> &a, const Box<T> &b)
 {
-    T l1, t1, r1, b1;
-    T l2, t2, r2, b2;
-    std::tie(l1, t1, r1, b1) = box1;
-    std::tie(l2, t2, r2, b2) = box2;
+    const T w = std::max(T(0), std::min(a.r, b.r) - std::max(a.l, b.l));
+    const T h = std::max(T(0), std::min(a.b, b.b) - std::max(a.t, b.t));
+    return w * h;
+}
 
-    T areaA            = (r1 - l1) * (b1 - t1);
-    T areaB            = (r2 - l2) * (b2 - t2);
-    T intersectionArea = computeIntersectionArea(box1, box2);
+template <typename T>
+inline float computeIoU(const Box<T> &a, const Box<T> &b)
+{
+    const T inter = intersectionArea(a, b);
+    const T unionArea = area(a) + area(b) - inter;
+    return (unionArea > 0) ? static_cast<float>(inter) / unionArea : 0.f;
+}
 
-    if (areaA == 0 || areaB == 0 || intersectionArea == 0)
+template <typename T>
+inline float computeOverlap(const Box<T> &a, const Box<T> &b)
+{
+    const T inter = intersectionArea(a, b);
+    const T minArea = std::min(area(a), area(b));
+    return (minArea > 0) ? static_cast<float>(inter) / minArea : 0.f;
+}
+
+template <typename T>
+class SpatialIndex
+{
+public:
+    SpatialIndex(int gridSize = 100) : gridSize(gridSize) {}
+
+    void insert(const Box<T> &box)
     {
-        return 0;
+        forEachCell(box, [&](Key key)
+                    { grid[key].push_back(&boxRefStorage.emplace_back(box)); });
     }
-    return static_cast<float>(intersectionArea) / (areaA + areaB - intersectionArea);
-}
 
-template <typename T> float computeOverlap(const std::tuple<T, T, T, T> &box1, const std::tuple<T, T, T, T> &box2)
-{
-    T areaA            = (std::get<2>(box1) - std::get<0>(box1)) * (std::get<3>(box1) - std::get<1>(box1));
-    T areaB            = (std::get<2>(box2) - std::get<0>(box2)) * (std::get<3>(box2) - std::get<1>(box2));
-    T intersectionArea = computeIntersectionArea(box1, box2);
-    if (areaA == 0 || areaB == 0 || intersectionArea == 0)
+    void clear()
     {
-        return 0;
+        grid.clear();
+        boxRefStorage.clear();
     }
-    return static_cast<float>(intersectionArea) / std::min(areaA, areaB);
-}
 
-template <typename T> class PositionManager
+    std::vector<const Box<T> *> query(const Box<T> &region) const
+    {
+        std::vector<const Box<T> *> results;
+        std::unordered_set<const Box<T> *> seen;
+        forEachCell(region, [&](Key key)
+                    {
+            auto it = grid.find(key);
+            if (it != grid.end()) {
+                for (auto* b : it->second) {
+                    if (seen.find(b) == seen.end()) {
+                        results.push_back(b);
+                        seen.insert(b);
+                    }
+                }
+            } });
+        return results;
+    }
+
+private:
+    struct Key
+    {
+        int x, y;
+        bool operator==(const Key &o) const { return x == o.x && y == o.y; }
+    };
+    struct KeyHash
+    {
+        std::size_t operator()(const Key &k) const
+        {
+            return std::hash<int>()(k.x) ^ (std::hash<int>()(k.y) << 1);
+        }
+    };
+
+    void forEachCell(const Box<T> &box, const std::function<void(Key)> &fn) const
+    {
+        int gx0 = static_cast<int>(box.l) / gridSize;
+        int gy0 = static_cast<int>(box.t) / gridSize;
+        int gx1 = static_cast<int>(box.r) / gridSize;
+        int gy1 = static_cast<int>(box.b) / gridSize;
+        for (int gx = gx0; gx <= gx1; ++gx)
+            for (int gy = gy0; gy <= gy1; ++gy)
+                fn({gx, gy});
+    }
+
+    int gridSize;
+    std::unordered_map<Key, std::vector<const Box<T> *>, KeyHash> grid;
+    std::list<Box<T>> boxRefStorage;
+};
+
+template <typename T>
+class PositionManager
 {
-  private:
-    std::vector<std::tuple<T, T, T, T>> markedPositions;
+private:
+    std::vector<Box<T>> markedPositions;
     std::function<std::tuple<int, int, int>(const std::string &)> getFontSizeFunc;
+    SpatialIndex<T> index;
 
-  public:
-    template <typename Func> PositionManager(Func &&fontSizeFunc) : getFontSizeFunc(std::forward<Func>(fontSizeFunc)) {}
-
-    // 获取最佳位置
-    std::tuple<T, T>
-    selectOptimalPosition(const std::tuple<T, T, T, T> &box, int canvasWidth, int canvasHeight, const std::string &text)
+    static Box<T> tupleToBox(const std::tuple<T, T, T, T> &tpl)
     {
-        // 获取字体宽度、高度和基线
+        return {std::get<0>(tpl), std::get<1>(tpl), std::get<2>(tpl), std::get<3>(tpl)};
+    }
+
+public:
+    template <typename Func>
+    PositionManager(Func &&fontSizeFunc, int gridSize = 100)
+        : getFontSizeFunc(std::forward<Func>(fontSizeFunc)), index(gridSize) {}
+
+    std::tuple<T, T> selectOptimalPosition(const std::tuple<T, T, T, T> &box,
+                                           int canvasWidth, int canvasHeight,
+                                           const std::string &text)
+    {
         int textWidth, textHeight, baseline;
         std::tie(textWidth, textHeight, baseline) = getFontSizeFunc(text);
 
-        std::vector<std::tuple<T, T, T, T>> candidatePositions =
-            findCandidatePositions(box, canvasWidth, canvasHeight, textWidth, textHeight, baseline);
+        auto candidates = findCandidatePositions(box, canvasWidth, canvasHeight,
+                                                 textWidth, textHeight, baseline);
 
-        float minIoU                             = 1.f;
-        std::tuple<T, T, T, T> candidatePosition = candidatePositions[0];
-        for (const auto &cposition : candidatePositions)
+        if (candidates.empty())
         {
+            // 如果一个候选位置都没有（例如文本框比画布还大），需要一个安全的回退策略
+            Box<T> fallbackBox = {T(0), T(0), T(textWidth), T(textHeight)};
+            markedPositions.push_back(fallbackBox);
+            index.insert(fallbackBox);
+            return {fallbackBox.l, fallbackBox.t + textHeight};
+        }
+
+        float minIoU = 1.1;
+        Box<T> best = tupleToBox(candidates.front());
+
+        for (const auto &cposition : candidates)
+        {
+            Box<T> cb = tupleToBox(cposition);
             float maxIoU = 0.f;
-            for (const auto &mposition : markedPositions)
+
+            // 查询时只与可能碰撞的 Box 计算 IoU
+            for (auto *m : index.query(cb))
             {
-                float IoU = computeIoU(cposition, mposition);
-                maxIoU    = std::max(IoU, maxIoU);
+                maxIoU = std::max(maxIoU, computeIoU(cb, *m));
             }
-            if (maxIoU == 0.f)
+
+            if (maxIoU == 0.f) // 找到完全不重叠的位置，直接采纳
             {
-                candidatePosition = cposition;
+                best = cb;
+                minIoU = 0.f;
                 break;
             }
-            else if (maxIoU < minIoU)
+
+            if (maxIoU < minIoU)
             {
-                minIoU            = maxIoU;
-                candidatePosition = cposition;
+                minIoU = maxIoU;
+                best = cb;
             }
         }
-        markedPositions.push_back(candidatePosition);
 
-        T left, top, right, bottom;
-        std::tie(left, top, right, bottom) = candidatePosition;
-        std::tuple<T, T> result            = std::make_tuple(left, top + textHeight);
-        return result;
+        markedPositions.push_back(best);
+        index.insert(best);
+        return {best.l, best.t + textHeight};
     }
 
-    void clearMarkedPositions() { markedPositions.clear(); }
-
-    // 获取候选区域 并附带画图位置起始点
-    std::vector<std::tuple<T, T, T, T>> findCandidatePositions(const std::tuple<T, T, T, T> &box,
-                                                               int canvasWidth,
-                                                               int canvasHeight,
-                                                               int textWidth,
-                                                               int textHeight,
-                                                               int baseline)
+    void clearMarkedPositions()
     {
-        std::vector<std::tuple<T, T, T, T>> candidatePositions;
+        markedPositions.clear();
+        index.clear();
+    }
+
+    std::vector<std::tuple<T, T, T, T>> findCandidatePositions(
+        const std::tuple<T, T, T, T> &box, int canvasWidth,
+        int canvasHeight, int textWidth, int textHeight, int baseline)
+    {
+        std::vector<std::tuple<T, T, T, T>> candidates;
+        candidates.reserve(10);
+
         T left, top, right, bottom;
         std::tie(left, top, right, bottom) = box;
-        left                               = std::max(static_cast<T>(0), left);
-        top                                = std::max(static_cast<T>(0), top);
-        right                              = std::min(static_cast<T>(canvasWidth), right);
-        bottom                             = std::min(static_cast<T>(canvasHeight), bottom);
-        std::tuple<T, T, T, T> all = std::make_tuple(0, 0, static_cast<T>(canvasWidth), static_cast<T>(canvasHeight));
 
-        // 一个框有6个可以画框的区域，判断那些区域没超过画面
+        Box<T> canvas{0, 0, T(canvasWidth), T(canvasHeight)};
+
         std::vector<std::tuple<T, T, T, T>> positions = {
-            std::make_tuple(left, top - textHeight - baseline, left + textWidth, top),
-            std::make_tuple(right, top, right + textWidth, top + textHeight + baseline),
-            std::make_tuple(left - textWidth, top, left, top + textHeight + baseline),
-            std::make_tuple(left, bottom, left + textWidth, bottom + textHeight + baseline),
-            std::make_tuple(right - textWidth, top - textHeight - baseline, right, top),
-            std::make_tuple(right - textWidth, bottom, right, bottom + textHeight + baseline),
-            std::make_tuple(left, top, left + textWidth, top + textHeight + baseline),
-            std::make_tuple(right - textWidth, top, right, top + textHeight + baseline),
-            std::make_tuple(right - textWidth, bottom - textHeight - baseline, right, bottom),
-            std::make_tuple(left, bottom - textHeight - baseline, left + textWidth, bottom)};
+            {left, top - textHeight - baseline, left + textWidth, top},
+            {right, top, right + textWidth, top + textHeight + baseline},
+            {left - textWidth, top, left, top + textHeight + baseline},
+            {left, bottom, left + textWidth, bottom + textHeight + baseline},
+            {right - textWidth, top - textHeight - baseline, right, top},
+            {right - textWidth, bottom, right, bottom + textHeight + baseline},
+            {left, top, left + textWidth, top + textHeight + baseline},
+            {right - textWidth, top, right, top + textHeight + baseline},
+            {right - textWidth, bottom - textHeight - baseline, right, bottom},
+            {left, bottom - textHeight - baseline, left + textWidth, bottom}};
 
-        for (const auto &position : positions)
+        for (const auto &p : positions)
         {
-            if (computeOverlap(all, position) == 1.0f)
+            Box<T> pb = tupleToBox(p);
+            // 使用直接的坐标比较代替浮点数运算，更清晰且稳健
+            if (pb.l >= canvas.l && pb.t >= canvas.t && pb.r <= canvas.r && pb.b <= canvas.b)
             {
-                candidatePositions.push_back(position);
+                candidates.push_back(p);
             }
         }
-        if (candidatePositions.size() == 0)
+        if (candidates.empty())
         {
-            candidatePositions.push_back(std::make_tuple(left, top, left + textWidth, top + textHeight + baseline));
+            // 如果所有预设位置都不在画布内，尝试一个基本位置
+            Box<T> baseBox = {left, top, left + textWidth, top + textHeight + baseline};
+            if (intersectionArea(canvas, baseBox) > 0)
+            { // 只要有部分重叠即可
+                candidates.push_back({left, top, left + textWidth, top + textHeight + baseline});
+            }
         }
-        return candidatePositions;
+        return candidates;
     }
 };
 
