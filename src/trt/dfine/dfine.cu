@@ -24,10 +24,15 @@ bool DFineModelImpl::load(const std::string &engine_file,
 
     auto input_dim  = trt_->static_dims(0);
 
+#if NV_TENSORRT_MAJOR >= 10
     label_head_dims_ = trt_->static_dims(2);
-    box_head_dims_ = trt_->static_dims(3);
+    box_head_dims_   = trt_->static_dims(3);
     score_head_dims_ = trt_->static_dims(4);
-
+#else
+    score_head_dims_ = trt_->static_dims(2);
+    label_head_dims_ = trt_->static_dims(3);
+    box_head_dims_   = trt_->static_dims(4);
+#endif
     network_input_width_  = input_dim[3];
     network_input_height_ = input_dim[2];
     isdynamic_model_      = trt_->has_dynamic_dim();
@@ -95,7 +100,7 @@ InferResult DFineModelImpl::forwards(const std::vector<cv::Mat> &inputs, void *s
                                  cudaMemcpyHostToDevice,
                                  stream_));
 
-    #ifdef NV_TENSORRT_MAJOR >= 10
+    #if NV_TENSORRT_MAJOR >= 10
         std::unordered_map<std::string, const void *> bindings = {
             {"images", input_buffer_image_.gpu()},
             {"orig_target_sizes", input_buffer_orig_target_size_.gpu()},
@@ -111,9 +116,9 @@ InferResult DFineModelImpl::forwards(const std::vector<cv::Mat> &inputs, void *s
         std::vector<void *> bindings{
             input_buffer_image_.gpu(), 
             input_buffer_orig_target_size_.gpu(),
+            output_scores_.gpu(),
             output_labels_.gpu(),
-            output_boxes_.gpu(),
-            output_scores_.gpu()};
+            output_boxes_.gpu()};
         if (!trt_->forward(bindings, stream_))
         {
             printf("Failed to tensorRT forward.\n");

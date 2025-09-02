@@ -45,6 +45,37 @@ static std::string format_shape(const Dims &shape)
   return output.str();
 }
 
+static const char *data_type_string(nvinfer1::DataType dt) {
+  switch (dt) {
+    case nvinfer1::DataType::kFLOAT:
+      return "float32";
+    case nvinfer1::DataType::kHALF:
+      return "float16";
+    case nvinfer1::DataType::kINT8:
+      return "int8";
+    case nvinfer1::DataType::kINT32: 
+      return "int32";
+    case nvinfer1::DataType::kBOOL: 
+      return "bool";
+    case nvinfer1::DataType::kUINT8: 
+      return "uint8";
+
+    #if NV_TENSORRT_MAJOR >= 10
+      case nvinfer1::DataType::kFP8: 
+        return "fp8";
+      case nvinfer1::DataType::kBF16: 
+        return "bf16";
+      case nvinfer1::DataType::kINT64: 
+        return "int64";
+      case nvinfer1::DataType::kINT4:
+        return "int4";
+    #endif
+
+    default:
+      return "Unknow";
+  }
+}
+
 static std::vector<uint8_t> load_file(const string &file) 
 {
     ifstream in(file, ios::in | ios::binary);
@@ -255,7 +286,8 @@ public:
         {
             auto name = engine->getBindingName(i);
             auto dim = engine->getBindingDimensions(i);
-            printf("\t%d.%s : shape {%s}\n", i, name, format_shape(dim).c_str());
+            auto io_dtype = engine->getBindingDataType(i);
+            printf("\t%d.%s : shape {%s} dtype {%s}\n", i, name, format_shape(dim).c_str(), data_type_string(io_dtype));
         }
 
         printf("Outputs: %d\n", num_output);
@@ -263,7 +295,8 @@ public:
         {
             auto name = engine->getBindingName(i + num_input);
             auto dim = engine->getBindingDimensions(i + num_input);
-            printf("\t%d.%s : shape {%s}\n", i, name, format_shape(dim).c_str());
+            auto io_dtype = engine->getBindingDataType(i + num_input);
+            printf("\t%d.%s : shape {%s} dtype {%s}\n", i, name, format_shape(dim).c_str(), data_type_string(io_dtype));
         }
     }
 

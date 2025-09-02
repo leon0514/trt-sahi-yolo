@@ -361,3 +361,36 @@ void decode_dfine_plan(
         num_box_element));
 
 }
+
+
+void decode_dfine_plan(
+    int32_t* labels, 
+    float* scores, 
+    float* boxes, 
+    int num_bboxes,
+    float confidence_threshold, 
+    int *box_count, 
+    int start_x,
+    int start_y,
+    float* result, 
+    int max_image_boxes, 
+    int num_box_element,
+    cudaStream_t stream
+    )
+{
+    auto grid  = grid_dims(num_bboxes);
+    auto block = block_dims(num_bboxes);
+    checkKernel(cuda::decode_dfine_kernel<<<grid, block, 0, stream>>>(
+        labels,
+        scores,
+        boxes,
+        num_bboxes,
+        confidence_threshold,
+        box_count,
+        start_x,
+        start_y,
+        result,
+        max_image_boxes,
+        num_box_element));
+
+}

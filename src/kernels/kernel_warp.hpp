@@ -165,4 +165,19 @@ void decode_dfine_plan(
     int num_box_element,
     cudaStream_t stream
     );
+
+void decode_dfine_plan(
+    int32_t* labels, 
+    float* scores, 
+    float* boxes, 
+    int num_bboxes, 
+    float confidence_threshold, 
+    int *box_count, 
+    int start_x,
+    int start_y, 
+    float* result, 
+    int max_image_boxes, 
+    int num_box_element,
+    cudaStream_t stream
+    );
 #endif

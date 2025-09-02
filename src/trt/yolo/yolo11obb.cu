@@ -88,7 +88,7 @@ InferResult Yolo11ObbModelImpl::forwards(const std::vector<cv::Mat> &inputs, voi
     }
     float *bbox_output_device = bbox_predict_.gpu();
 
-#ifdef NV_TENSORRT_MAJOR >= 10
+#if NV_TENSORRT_MAJOR >= 10
     // yolov5 模型推理
     // TensorRT10需要指定输入输出名字，这里的输入输出分别是images, output0
     std::unordered_map<std::string, const void *> bindings = {{"images", input_buffer_.gpu()},

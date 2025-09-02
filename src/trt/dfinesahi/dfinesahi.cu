@@ -134,9 +134,9 @@ InferResult DFineSahiModelImpl::forwards(const std::vector<cv::Mat> &inputs, voi
         std::vector<void *> bindings{
             input_buffer_image_.gpu(), 
             input_buffer_orig_target_size_.gpu(),
+            output_scores_.gpu(),
             output_labels_.gpu(),
-            output_boxes_.gpu(),
-            output_scores_.gpu()};
+            output_boxes_.gpu()};
         if (!trt_->forward(bindings, stream_))
         {
             printf("Failed to tensorRT forward.\n");
@@ -159,7 +159,11 @@ InferResult DFineSahiModelImpl::forwards(const std::vector<cv::Mat> &inputs, voi
         int start_x                    = slice_->slice_start_point_.cpu()[ib * 2];
         int start_y                    = slice_->slice_start_point_.cpu()[ib * 2 + 1];
         float *boxarray_device         = result_.gpu();
+#if NV_TENSORRT_MAJOR >= 10
         int64_t* output_labels_device  = output_labels_.gpu() + ib * (box_head_dims_[1]);
+#else
+        int32_t* output_labels_device  = output_labels_.gpu() + ib * (box_head_dims_[1]);
+#endif
         float* output_scores_device    = output_scores_.gpu() + ib * (box_head_dims_[1]);
         float* output_boxes_device     = output_boxes_.gpu()  + ib * (box_head_dims_[1] * box_head_dims_[2]);
 

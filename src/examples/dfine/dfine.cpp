@@ -38,23 +38,24 @@ void run_dfine()
     for (int i = 0; i< 1000; i++)
         auto det = model_->forwards(images);
     timer.stop();
-    // std::visit(
-    //     [&images](auto &&result)
-    //     {
-    //         int batch_size = images.size();
-    //         using T        = std::decay_t<decltype(result)>;
-    //         if constexpr (std::is_same_v<T, std::vector<object::DetectionResultArray>>)
-    //         {
-    //             for (int i = 0; i < batch_size; i++)
-    //             {
-    //                 printf("Batch %d: size : %d\n", i, result[i].size());
-    //                 osd_detection(images[i], result[i]);
-    //                 cv::imwrite("result/dfine.jpg", images[i]);
-    //             }
+    auto det = model_->forwards(images);
+    std::visit(
+        [&images](auto &&result)
+        {
+            int batch_size = images.size();
+            using T        = std::decay_t<decltype(result)>;
+            if constexpr (std::is_same_v<T, std::vector<object::DetectionResultArray>>)
+            {
+                for (int i = 0; i < batch_size; i++)
+                {
+                    printf("Batch %d: size : %d\n", i, result[i].size());
+                    osd_detection(images[i], result[i]);
+                    cv::imwrite("result/dfine.jpg", images[i]);
+                }
                 
-    //         }
-    //     },
-    //     det);
+            }
+        },
+        det);
 }
 
 void run_dfine_sahi()

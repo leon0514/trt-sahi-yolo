@@ -41,15 +41,21 @@ public:
     std::vector<std::shared_ptr<tensor::Memory<unsigned char>>> preprocess_images_buffers_;
 
     tensor::Memory<float> input_buffer_image_;
+#if NV_TENSORRT_MAJOR >= 10
     tensor::Memory<int64_t>   input_buffer_orig_target_size_;
-
+#else
+    tensor::Memory<int32_t>   input_buffer_orig_target_size_;
+#endif
     tensor::Memory<float> result_;
 
     tensor::Memory<int> image_box_count_;
 
     tensor::Memory<int> start_;
-
+#if NV_TENSORRT_MAJOR >= 10
     tensor::Memory<int64_t> output_labels_;
+#else
+    tensor::Memory<int32_t> output_labels_;
+#endif
     tensor::Memory<float> output_boxes_;
     tensor::Memory<float> output_scores_;
 
@@ -92,8 +98,11 @@ public:
         size_t input_numel  = network_input_width_ * network_input_height_ * 3;
         float *input_device = input_buffer_image_.gpu() + ibatch * input_numel;
         size_t size_image   = slice_->slice_width_ * slice_->slice_height_ * 3;
-
+#if NV_TENSORRT_MAJOR >= 10
         int64_t* orig_target_sizes_cpu_ptr = input_buffer_orig_target_size_.cpu();
+#else
+        int32_t* orig_target_sizes_cpu_ptr = input_buffer_orig_target_size_.cpu();
+#endif
         orig_target_sizes_cpu_ptr[ibatch * 2 + 0] = slice_->slice_width_;  // 原始图像高度
         orig_target_sizes_cpu_ptr[ibatch * 2 + 1] = slice_->slice_height_;  // 原始图像宽度
 
