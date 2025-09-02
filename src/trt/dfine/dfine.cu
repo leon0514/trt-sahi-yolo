@@ -135,7 +135,11 @@ InferResult DFineModelImpl::forwards(const std::vector<cv::Mat> &inputs, void *s
     std::vector<object::DetectionResultArray> arrout(num_image);
     for (int ib = 0; ib < infer_batch_size; ++ib)
     {
+#if NV_TENSORRT_MAJOR >= 10
         int64_t* labels_host   = output_labels_.cpu() + ib * label_head_dims_[1];
+#else
+        int32_t* labels_host   = output_labels_.cpu() + ib * label_head_dims_[1];
+#endif
         float* boxes_host  = output_boxes_.cpu() + ib * box_head_dims_[1] * box_head_dims_[2];
         float* scores_host = output_scores_.cpu() + ib * score_head_dims_[1];
 
