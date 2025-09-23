@@ -1,4 +1,5 @@
 import trtsahi
+import time
 import cv2
 
 
@@ -46,13 +47,9 @@ def yolo11():
         slice_horizontal_ratio=0,
         slice_vertical_ratio=0
     )
-
     images = [cv2.imread("inference/wallhaven-9ddovd.jpg")]
-    print(images[0].shape)
-    # Run inference
     results = model.forwards(images)
     # Print results
-    print(len(results[0]))
     for result in results[0]:
         print(result.box)
 
@@ -82,7 +79,7 @@ def yolo11obb():
     results = model.forwards(images)
     # Print results
     for result in results[0]:
-        print(result.obb)
+        print(result.box)
 
 def yolo11pose():
     names = ["person"]
@@ -108,7 +105,6 @@ def yolo11pose():
     # Print results
     for result in results[0]:
         print(result.box)
-        print(result.keypoints)
 
 def yolo11seg():
     names = ["person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
@@ -143,7 +139,6 @@ def yolo11seg():
     # Print results
     for result in results[0]:
         print(result.box)
-        print(result.seg)
 
 if __name__ == "__main__":
     yolo11()

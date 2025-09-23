@@ -9,11 +9,11 @@ cuda_arch := 8.6
 nvcc      := $(cuda_home)/bin/nvcc -ccbin=$(cc)
 
 
-project_include_path := src
-opencv_include_path  := /workspace/compile/__install/opencv490/include/opencv4
-trt_include_path     := /opt/nvidia/TensorRT-10.9.0.34/include
-cuda_include_path    := $(cuda_home)/include
-ffmpeg_include_path  := 
+project_include_path   := src
+opencv_include_path    := /workspace/compile/__install/opencv490/include/opencv4
+trt_include_path       := /opt/nvidia/TensorRT-10.9.0.34/include
+cuda_include_path      := $(cuda_home)/include
+freetype_include_path  := /usr/include/freetype2
 
 python_include_path  := /usr/include/python3.10
 
@@ -22,7 +22,9 @@ include_paths        := $(project_include_path) \
 						$(opencv_include_path) \
 						$(trt_include_path) \
 						$(cuda_include_path) \
+						$(freetype_include_path) \
 						$(python_include_path)
+
 
 
 opencv_library_path  := /workspace/compile/__install/opencv490/lib
@@ -40,8 +42,9 @@ link_opencv       := opencv_core opencv_imgproc opencv_videoio opencv_imgcodecs
 link_trt          := nvinfer nvinfer_plugin nvonnxparser
 link_cuda         := cuda cublas cudart cudnn
 link_sys          := stdc++ dl
+link_freetype     := freetype
 
-link_librarys     := $(link_opencv) $(link_trt) $(link_cuda) $(link_sys)
+link_librarys     := $(link_opencv) $(link_trt) $(link_cuda) $(link_freetype) $(link_sys)
 
 
 empty := 
@@ -91,7 +94,7 @@ $(name)   : $(workdir)/$(name)
 all       : $(name)
 
 run       : $(name)
-	@cd $(workdir) && python3 test.py
+	@cd $(workdir) && python3 demo.py
 
 pro       : $(workdir)/pro
 

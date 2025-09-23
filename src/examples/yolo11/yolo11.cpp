@@ -31,23 +31,12 @@ void run_yolo11()
     cv::Mat image = cv::imread("inference/persons.jpg");
     std::vector<cv::Mat> images = {image};
     auto det = model_->forwards(images);
-    std::visit(
-        [&images](auto &&result)
-        {
-            int batch_size = images.size();
-            using T        = std::decay_t<decltype(result)>;
-            if constexpr (std::is_same_v<T, std::vector<object::DetectionResultArray>>)
-            {
-                for (int i = 0; i < batch_size; i++)
-                {
-                    printf("Batch %d: size : %d\n", i, result[i].size());
-                    osd_detection(images[i], result[i]);
-                    cv::imwrite("result/yolo11l.jpg", images[i]);
-                }
-                
-            }
-        },
-        det);
+    for (int i = 0; i < images.size(); i++)
+    {
+        printf("Batch %d: size : %d\n", i, det[i].size());
+        osd(images[i], det[i]);
+        cv::imwrite("result/dfine.jpg", images[i]);
+    }
 }
 
 void run_yolo11_sahi()
@@ -67,21 +56,10 @@ void run_yolo11_sahi()
     cv::Mat image = cv::imread("inference/persons.jpg");
     std::vector<cv::Mat> images = {image};
     auto det = model_->forwards(images);
-    std::visit(
-        [&images](auto &&result)
-        {
-            int batch_size = images.size();
-            using T        = std::decay_t<decltype(result)>;
-            if constexpr (std::is_same_v<T, std::vector<object::DetectionResultArray>>)
-            {
-                for (int i = 0; i < batch_size; i++)
-                {
-                    printf("Batch %d: size : %d\n", i, result[i].size());
-                    osd_detection(images[i], result[i]);
-                    cv::imwrite("result/yolo11lsahi.jpg", images[i]);
-                }
-
-            }
-        },
-        det);
+    for (int i = 0; i < images.size(); i++)
+    {
+        printf("Batch %d: size : %d\n", i, det[i].size());
+        osd(images[i], det[i]);
+        cv::imwrite("result/dfine.jpg", images[i]);
+    }
 }

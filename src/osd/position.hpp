@@ -113,11 +113,11 @@ private:
     std::list<Box<T>> boxRefStorage;
 };
 
+// ===== 主类，外部接口不变 =====
 template <typename T>
 class PositionManager
 {
 private:
-    std::vector<Box<T>> markedPositions;
     std::function<std::tuple<int, int, int>(const std::string &)> getFontSizeFunc;
     SpatialIndex<T> index;
 
@@ -145,12 +145,11 @@ public:
         {
             // 如果一个候选位置都没有（例如文本框比画布还大），需要一个安全的回退策略
             Box<T> fallbackBox = {T(0), T(0), T(textWidth), T(textHeight)};
-            markedPositions.push_back(fallbackBox);
             index.insert(fallbackBox);
             return {fallbackBox.l, fallbackBox.t + textHeight};
         }
 
-        float minIoU = 1.1;
+        float minIoU = 1.1f; // 初始值设为大于1，确保任何合法值都能替换它
         Box<T> best = tupleToBox(candidates.front());
 
         for (const auto &cposition : candidates)
@@ -177,15 +176,12 @@ public:
                 best = cb;
             }
         }
-
-        markedPositions.push_back(best);
         index.insert(best);
         return {best.l, best.t + textHeight};
     }
 
     void clearMarkedPositions()
     {
-        markedPositions.clear();
         index.clear();
     }
 
@@ -201,7 +197,7 @@ public:
 
         Box<T> canvas{0, 0, T(canvasWidth), T(canvasHeight)};
 
-        std::vector<std::tuple<T, T, T, T>> positions = {
+        const std::vector<std::tuple<T, T, T, T>> positions = {
             {left, top - textHeight - baseline, left + textWidth, top},
             {right, top, right + textWidth, top + textHeight + baseline},
             {left - textWidth, top, left, top + textHeight + baseline},

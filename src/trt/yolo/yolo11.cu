@@ -1,6 +1,8 @@
 #include "common/affine.hpp"
 #include "common/check.hpp"
 #include "common/image.hpp"
+#include "common/object.hpp"
+#include "common/createObject.hpp"
 #include "kernels/kernel_warp.hpp"
 #include "trt/yolo/yolo11.hpp"
 namespace yolo
@@ -146,13 +148,13 @@ InferResult Yolo11ModelImpl::forwards(const std::vector<cv::Mat> &inputs, void *
                                  cudaMemcpyDeviceToHost,
                                  stream_));
     checkRuntime(cudaStreamSynchronize(stream_));
-    std::vector<object::DetectionResultArray> arrout(num_image);
+    std::vector<object::DetectionBoxArray> arrout(num_image);
 
     for (int ib = 0; ib < num_image; ++ib)
     {
         float *parray                        = output_boxarray_.cpu() + ib * (max_image_boxes_ * num_box_element_);
         int count                            = min(max_image_boxes_, *(image_box_counts_[ib]->cpu()));
-        object::DetectionResultArray &output = arrout[ib];
+        object::DetectionBoxArray &output = arrout[ib];
         for (int i = 0; i < count; ++i)
         {
             float *pbox  = parray + i * num_box_element_;
@@ -161,8 +163,7 @@ InferResult Yolo11ModelImpl::forwards(const std::vector<cv::Mat> &inputs, void *
             if (keepflag == 1)
             {
                 std::string name = class_names_[label];
-                object::Box result_object_box(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], label, name);
-                output.emplace_back(result_object_box);
+                output.emplace_back(object::createBox(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], label, name));
             }
         }
     }

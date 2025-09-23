@@ -87,14 +87,7 @@ inline std::ostream &operator<<(std::ostream &os, ModelType type)
     return os;
 }
 
-using InferResult = std::variant<object::DetectionResultArray,
-                                 object::DetectionObbResultArray,
-                                 object::PoseResultArray,
-                                 object::SegmentationResultArray,
-                                 std::vector<object::DetectionResultArray>,
-                                 std::vector<object::DetectionObbResultArray>,
-                                 std::vector<object::PoseResultArray>,
-                                 std::vector<object::SegmentationResultArray>>;
+using InferResult = std::vector<object::DetectionBoxArray>;
 class InferBase
 {
   public:

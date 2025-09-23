@@ -1,5 +1,7 @@
 #include "kernels/kernel_warp.hpp"
 #include "trt/sahiyolo/yolo11_seg_sahi.hpp"
+#include "common/createObject.hpp"
+
 namespace sahiyolo
 {
 
@@ -283,12 +285,12 @@ InferResult Yolo11SegSahiModelImpl::forwards(const std::vector<cv::Mat> &inputs,
                                  stream_));
     checkRuntime(cudaStreamSynchronize(stream_));
 
-    std::vector<object::SegmentationResultArray> arrout(1);
+    std::vector<object::DetectionBoxArray> arrout(1);
     for (int ib = 0; ib < 1; ++ib)
     {
         float *parray                           = output_boxarray_.cpu();
         int count                               = std::min(max_image_boxes_, *(image_box_count_.cpu()));
-        object::SegmentationResultArray &output = arrout[ib];
+        object::DetectionBoxArray &output = arrout[ib];
         for (int i = 0; i < count; ++i)
         {
             float *pbox  = parray + i * num_box_element_;
@@ -298,10 +300,9 @@ InferResult Yolo11SegSahiModelImpl::forwards(const std::vector<cv::Mat> &inputs,
             if (keepflag == 1)
             {
                 std::string name = class_names_[label];
-                auto seg         = decode_segment(ib, pbox, stream);
-                object::Box seg_box(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], label, name);
-                object::SegmentationInstance result_object_box(seg_box, seg);
-                output.emplace_back(std::move(result_object_box));
+                auto seg = decode_segment(ib, pbox, stream);
+                cv::Mat mask = object::segmentMapToMat(seg);
+                output.emplace_back(object::createSegmentationBox(pbox[0], pbox[1], pbox[2], pbox[3], mask, pbox[4], label, name));
             }
         }
     }

@@ -1,4 +1,6 @@
 #include "trt/dfine/dfine.hpp"
+#include "common/object.hpp"
+#include "common/createObject.hpp"
 
 namespace  dfine
 {
@@ -132,7 +134,7 @@ InferResult DFineModelImpl::forwards(const std::vector<cv::Mat> &inputs, void *s
     
     checkRuntime(cudaStreamSynchronize(stream_));
     
-    std::vector<object::DetectionResultArray> arrout(num_image);
+    std::vector<object::DetectionBoxArray> arrout(num_image);
     for (int ib = 0; ib < infer_batch_size; ++ib)
     {
 #if NV_TENSORRT_MAJOR >= 10
@@ -143,7 +145,7 @@ InferResult DFineModelImpl::forwards(const std::vector<cv::Mat> &inputs, void *s
         float* boxes_host  = output_boxes_.cpu() + ib * box_head_dims_[1] * box_head_dims_[2];
         float* scores_host = output_scores_.cpu() + ib * score_head_dims_[1];
 
-        object::DetectionResultArray &output = arrout[ib];
+        object::DetectionBoxArray &output = arrout[ib];
         for (int i=0; i < label_head_dims_[1]; i++)
         {
             int label = labels_host[i];
@@ -153,8 +155,7 @@ InferResult DFineModelImpl::forwards(const std::vector<cv::Mat> &inputs, void *s
             if (score > confidence_threshold_)
             {
                 std::string name = class_names_[label];
-                object::Box result_object_box(pbox[0], pbox[1], pbox[2], pbox[3], score, label, name);
-                output.emplace_back(std::move(result_object_box));
+                output.emplace_back(object::createBox(pbox[0], pbox[1], pbox[2], pbox[3], score, label, name));
             }
         }
     }

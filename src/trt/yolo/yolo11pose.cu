@@ -1,5 +1,7 @@
 #include "common/affine.hpp"
 #include "common/check.hpp"
+#include "common/object.hpp"
+#include "common/createObject.hpp"
 #include "common/image.hpp"
 #include "kernels/kernel_warp.hpp"
 #include "trt/yolo/yolo11pose.hpp"
@@ -154,13 +156,13 @@ InferResult Yolo11PoseModelImpl::forwards(const std::vector<cv::Mat> &inputs, vo
                                  cudaMemcpyDeviceToHost,
                                  stream_));
     checkRuntime(cudaStreamSynchronize(stream_));
-    std::vector<object::PoseResultArray> arrout(num_image);
+    std::vector<object::DetectionBoxArray> arrout(num_image);
 
     for (int ib = 0; ib < num_image; ++ib)
     {
         float *parray = output_boxarray_.cpu() + ib * (max_image_boxes_ * (num_box_element_ + num_key_point_ * 3));
         int count     = min(max_image_boxes_, *(image_box_counts_[ib]->cpu()));
-        object::PoseResultArray &output = arrout[ib];
+        object::DetectionBoxArray &output = arrout[ib];
         for (int i = 0; i < count; ++i)
         {
             float *pbox  = parray + i * (num_box_element_ + num_key_point_ * 3);
@@ -168,20 +170,17 @@ InferResult Yolo11PoseModelImpl::forwards(const std::vector<cv::Mat> &inputs, vo
             int keepflag = pbox[6];
             if (keepflag == 1)
             {
-                std::vector<object::KeyPoint> points;
+                std::vector<object::PosePoint> points;
                 points.reserve(num_key_point_);
                 for (int j = 0; j < num_key_point_; j++)
                 {
                     float x   = pbox[num_box_element_ + j * 3];
                     float y   = pbox[num_box_element_ + j * 3 + 1];
                     float vis = pbox[num_box_element_ + j * 3 + 2];
-                    points.push_back(std::move(object::KeyPoint(x, y, vis)));
+                    points.push_back(std::move(object::PosePoint(x, y, vis)));
                 }
                 std::string name = class_names_[label];
-                object::PoseInstance result_object_box(
-                    object::Box(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], label, name),
-                    points);
-                output.emplace_back(std::move(result_object_box));
+                output.emplace_back(object::createPoseBox(pbox[0], pbox[1], pbox[2], pbox[3], points, pbox[4], label, name));
             }
         }
     }

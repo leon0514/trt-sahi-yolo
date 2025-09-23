@@ -1,6 +1,6 @@
 #include "kernels/kernel_warp.hpp"
 #include "trt/sahiyolo/yolo11_sahi.hpp"
-
+#include "common/createObject.hpp"
 
 namespace sahiyolo
 {
@@ -171,12 +171,12 @@ InferResult Yolo11SahiModelImpl::forwards(const std::vector<cv::Mat> &inputs, vo
                                  stream_));
     checkRuntime(cudaStreamSynchronize(stream_));
 
-    std::vector<object::DetectionResultArray> arrout(1);
+    std::vector<object::DetectionBoxArray> arrout(1);
     for (int ib = 0; ib < 1; ++ib)
     {
         float *parray                        = output_boxarray_.cpu();
         int count                            = min(max_image_boxes_, *(image_box_count_.cpu()));
-        object::DetectionResultArray &output = arrout[ib];
+        object::DetectionBoxArray &output = arrout[ib];
         for (int i = 0; i < count; ++i)
         {
             float *pbox  = parray + i * num_box_element_;
@@ -186,8 +186,7 @@ InferResult Yolo11SahiModelImpl::forwards(const std::vector<cv::Mat> &inputs, vo
             if (keepflag == 1)
             {
                 std::string name = class_names_[label];
-                object::Box result_object_box(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], label, name);
-                output.emplace_back(std::move(result_object_box));
+                output.emplace_back(object::createBox(pbox[0], pbox[1], pbox[2], pbox[3], pbox[4], label, name));
             }
         }
     }

@@ -17,15 +17,15 @@ void run_dfine();
 int main()
 {
     // run_yolov5();
-    // run_yolov5_sahi();
-    // run_yolo11obb();
-    // run_yolo11obb_sahi();
-    // run_yolo11seg();
-    // run_yolo11seg_sahi();
-    // run_yolo11pose();
-    // run_yolo11pose_sahi();
-    // run_yolo11();
-    // run_yolo11_sahi();
+    run_yolov5_sahi();
+    run_yolo11obb();
+    run_yolo11obb_sahi();
+    run_yolo11seg();
+    run_yolo11seg_sahi();
+    run_yolo11pose();
+    run_yolo11pose_sahi();
+    run_yolo11();
+    run_yolo11_sahi();
     run_dfine();
     return 0;
 }
