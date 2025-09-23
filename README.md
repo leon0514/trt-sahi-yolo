@@ -168,6 +168,12 @@ os.rename(onnx_path, os.path.join(f'{save_name}.onnx'))
    <img src="https://github.com/leon0514/trt-sahi-yolo/blob/main/assert/yolo11sahi.jpg?raw=true" width="100%"/>
 </div>
 
+使用freetype进行文字展示，需要字体文件，默认位置为`font\SIMKAI.TTF`，可以修改osd.hpp中的代码进行替换字体。
+```cpp
+static const char* font_path = "font/SIMKAI.TTF"; // !重要: 确保这个字体路径正确
+static CvxText text_renderer(font_path);
+```
+
 ## python 支持
 ```python
 def yolov5():
