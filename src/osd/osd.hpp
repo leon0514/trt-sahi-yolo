@@ -26,8 +26,8 @@ void drawPolygon(cv::Mat &img, const std::vector<std::tuple<float, float>> &poin
 void osd(cv::Mat &img, const object::DetectionBoxArray &boxes, bool osd_rect = true, double font_scale_ratio = 0.04);
 
 // 多边形重载
-void osd(cv::Mat &img, const std::unordered_map<std::string, std::vector<std::tuple<float, float>>> &points, const cv::Scalar &color = cv::Scalar(0, 255, 0), double font_scale_ratio = 0.04);
-void osd(cv::Mat &img, const std::string &fence_name, const std::vector<std::tuple<float, float>> &points, const cv::Scalar &color = cv::Scalar(0, 255, 0), double font_scale_ratio = 0.04);
+void osd(cv::Mat &img, const std::unordered_map<std::string, std::vector<std::tuple<float, float>>> &points, const cv::Scalar &color = cv::Scalar(0, 255, 0), double font_scale_ratio = 0.035);
+void osd(cv::Mat &img, const std::string &fence_name, const std::vector<std::tuple<float, float>> &points, const cv::Scalar &color = cv::Scalar(0, 255, 0), double font_scale_ratio = 0.035);
 void osd(cv::Mat &img, const std::tuple<float, float> &position, const std::string &text, const cv::Scalar &color = cv::Scalar(0, 255, 0), int font_size = 40);
 
 #endif

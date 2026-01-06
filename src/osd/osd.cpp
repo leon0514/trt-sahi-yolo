@@ -87,7 +87,30 @@ namespace {
 
     static const char *font_path = "font/SIMKAI.TTF"; 
     static CvxText text_renderer(font_path);
-}
+    
+
+    /**
+     * @brief 根据图像尺寸和比例因子计算字体大小（像素高度）。
+     *        逻辑与 Ultralytics 一致 (avg_dim * ratio, min 12)。
+     */
+    int calculateDynamicFontSize(int img_w, int img_h, double ratio) {
+        return std::max(
+            static_cast<int>(std::round((img_w + img_h) / 2.0 * ratio)),
+            12
+        );
+    }
+
+    /**
+     * @brief 根据图像尺寸计算线条粗细，与 Ultralytics 的逻辑完全一致。
+     *        (avg_dim * 0.003, min 2)。
+     */
+    int getUltralyticsLineWidth(const cv::Mat& im) {
+        double avg_dimension = (im.rows + im.cols) / 2.0;
+        int calculated_lw = static_cast<int>(std::round(avg_dimension * 0.003));
+        return std::max(calculated_lw, 2);
+    }
+
+} // end anonymous namespace
 
 // 几何绘制函数
 void drawBaseInfoGeometry(cv::Mat &img, const object::DetectionBox &box, const cv::Scalar &color, int thickness) {
@@ -96,7 +119,6 @@ void drawBaseInfoGeometry(cv::Mat &img, const object::DetectionBox &box, const c
 }
 
 void drawPositionRectGeometry(cv::Mat &img, const object::DetectionBox &box, const cv::Scalar &color, int thickness) {
-    // 简单实现虚线框，或者直接实线
     cv::Rect rect(cv::Point(box.box.left, box.box.top), cv::Point(box.box.right, box.box.bottom));
     cv::rectangle(img, rect, color, thickness); 
 }
@@ -147,13 +169,17 @@ void drawTrackTrace(cv::Mat &img, const object::DetectionBox &box, int font_size
     if (!box.track) return;
     auto c = random_color(box.track->track_id);
     cv::Scalar color((double)std::get<0>(c), (double)std::get<1>(c), (double)std::get<2>(c));
-    int th = std::max(1, font_size / 15);
+    
+    // 使用独立的线条粗细计算
+    int th = getUltralyticsLineWidth(img);
+
     const auto &trace = box.track->track_trace;
     for (size_t i = 1; i < trace.size(); ++i) {
         cv::line(img, cv::Point(std::get<0>(trace[i-1]), std::get<1>(trace[i-1])), 
                  cv::Point(std::get<0>(trace[i]), std::get<1>(trace[i])), color, th);
     }
     std::string text = "ID:" + std::to_string(box.track->track_id);
+    // 跟踪ID的字体大小可以比主标签小一些，这里乘以0.8作为示例
     text_renderer.putText(img, text, cv::Point(box.box.center_x(), box.box.center_y()), color, font_size * 0.8);
 }
 
@@ -164,19 +190,14 @@ void drawPolygon(cv::Mat &img, const std::vector<std::tuple<float, float>> &poin
     cv::polylines(img, poly, true, color, thickness);
 }
 
-int calculateDynamicFontSize(int img_w, int img_h, const object::Box& box, double ratio) {
-    // 只根据图像分辨率计算字体大小，保证全图一致
-    // ratio 默认为 0.04 (即图像短边的 4%)
-    int target_size = std::max(12, static_cast<int>(std::min(img_w, img_h) * ratio));    
-    return target_size;
-}
 // =================================================================
 // 主 OSD 函数
 // =================================================================
 
+// MODIFIED: Re-added font_scale_ratio parameter
 void osd(cv::Mat &img, const object::DetectionBoxArray &boxes, bool osd_rect, double font_scale_ratio) {
     int height = img.rows, width = img.cols;
-    const int PAD_X = 2; // 与 LayoutSolver 保持一致
+    const int PAD_X = 2;
     const int PAD_Y = 2;
 
     // 1. 初始化布局求解器
@@ -199,8 +220,9 @@ void osd(cv::Mat &img, const object::DetectionBoxArray &boxes, bool osd_rect, do
         auto c = random_color(box.class_name);
         cv::Scalar color(std::get<0>(c), std::get<1>(c), std::get<2>(c));
         
-        int base_font_size = calculateDynamicFontSize(width, height, box.box, font_scale_ratio);
-        int thickness = std::max(1, base_font_size / 10);
+        // MODIFIED: Use the new/updated functions for font size and thickness
+        int base_font_size = calculateDynamicFontSize(width, height, font_scale_ratio);
+        int thickness = getUltralyticsLineWidth(img);
 
         if (osd_rect) {
             if (box.type == object::ObjectType::POSITION) drawPositionRectGeometry(img, box, color, thickness);
@@ -241,24 +263,18 @@ void osd(cv::Mat &img, const object::DetectionBoxArray &boxes, bool osd_rect, do
         cv::Rect bg_rect(static_cast<int>(res.left), static_cast<int>(res.top), res.width, res.height);
         bg_rect &= cv::Rect(0, 0, width, height);
         if (bg_rect.area() <= 0) continue;
-
-        // 实心填充背景
-        // cv::rectangle(img, bg_rect, label_colors[i], cv::FILLED);
         
-        // 绘制文字 (修正 Baseline 偏移)
         int text_x = bg_rect.x + PAD_X;
-        // 坐标 = BoxTop + Padding + Ascent
         int text_y = bg_rect.y + PAD_Y + res.textAscent;
 
         text_renderer.putText(img, label_texts[i], cv::Point(text_x, text_y), label_colors[i], res.fontSize);
     }
 }
 
-// 多边形重载
 void osd(cv::Mat &img, const std::unordered_map<std::string, std::vector<std::tuple<float, float>>> &points, const cv::Scalar &color, double font_scale_ratio) {
     int h = img.rows, w = img.cols;
-    int fs = std::max(20, static_cast<int>(std::min(w, h) * font_scale_ratio));
-    int th = std::max(1, fs / 7);
+    int fs = calculateDynamicFontSize(w, h, font_scale_ratio);
+    int th = getUltralyticsLineWidth(img);
     for (const auto &[l, pts] : points) {
         if (pts.empty()) continue;
         drawPolygon(img, pts, color, th);
@@ -271,8 +287,8 @@ void osd(cv::Mat &img, const std::unordered_map<std::string, std::vector<std::tu
 
 void osd(cv::Mat &img, const std::string &fence_name, const std::vector<std::tuple<float, float>> &points, const cv::Scalar &color, double font_scale_ratio) {
     int h = img.rows, w = img.cols;
-    int fs = std::max(20, static_cast<int>(std::min(w, h) * font_scale_ratio));
-    int th = std::max(1, fs / 7);
+    int fs = calculateDynamicFontSize(w, h, font_scale_ratio);
+    int th = getUltralyticsLineWidth(img); // Use independent thickness calculation
     if (points.empty()) return;
     drawPolygon(img, points, color, th);
     if (points.size() >= 3) {
